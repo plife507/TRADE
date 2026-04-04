@@ -246,10 +246,6 @@ class PlayEngine:
         )
         self._sizing_model = SizingModel(sizing_config)
 
-        # Risk policy for signal filtering
-        # Lazy initialized when first signal is evaluated
-        self._risk_policy = None
-
         # Performance tracking
         self._total_signals: int = 0
         self._total_trades: int = 0
@@ -569,16 +565,6 @@ class PlayEngine:
             return close_result
 
         # Entry signals (LONG/SHORT)
-        # Apply risk policy filtering (if risk_mode=rules)
-        if self.config.risk_mode == "rules":
-            decision = self._check_risk_policy(signal)
-            if not decision.allowed:
-                self.logger.debug("Signal blocked by risk policy: %s", decision.reason)
-                return OrderResult(
-                    success=False,
-                    error=f"Risk policy blocked: {decision.reason}",
-                )
-
         # Validate SL vs liquidation price (CRITICAL safety check)
         stop_loss = signal.metadata.get("stop_loss") if signal.metadata else None
         if stop_loss is not None and self.config.on_sl_beyond_liq != "disabled":
@@ -728,53 +714,6 @@ class PlayEngine:
                 "total_signals": self._total_signals,
                 "warmup_complete": self._warmup_complete,
             },
-        )
-
-    def restore_state(self, state: EngineState) -> None:
-        """
-        Restore engine state from persistence.
-
-        Args:
-            state: Previously saved engine state
-        """
-        self._total_trades = state.total_trades
-        self._last_signal_ts = state.last_signal_ts
-        self._bars_processed = state.metadata.get("bars_processed", 0)
-        self._total_signals = state.metadata.get("total_signals", 0)
-        self._warmup_complete = state.metadata.get("warmup_complete", False)
-
-        # Restore position via exchange adapter if it supports it
-        if state.position is not None:
-            restore_fn = getattr(self.exchange, 'restore_position', None)
-            if restore_fn is not None:
-                restore_fn(state.position)
-                self.logger.info(
-                    f"Position restored: {state.position.side} {state.position.symbol} "
-                    f"size={state.position.size_usdt:.2f} entry={state.position.entry_price:.2f}"
-                )
-            else:
-                self.logger.warning(
-                    f"Exchange adapter does not support restore_position(). "
-                    f"Persisted position ({state.position.side} {state.position.symbol}) "
-                    f"will need to be reconciled from exchange state."
-                )
-
-        # Restore incremental state if persisted
-        if state.incremental_state_json and self._incremental_state is not None:
-            try:
-                import json as _json
-                from src.structures import MultiTFIncrementalState
-                if hasattr(self._incremental_state, 'from_json'):
-                    parsed_data: dict = _json.loads(state.incremental_state_json)
-                    self._incremental_state = MultiTFIncrementalState.from_json(
-                        parsed_data
-                    )
-            except Exception as e:
-                self.logger.warning("Failed to restore incremental state: %s", e)
-
-        self.logger.info(
-            f"State restored: {state.engine_id} "
-            f"trades={state.total_trades} equity={state.equity_usdt:.2f}"
         )
 
     # =========================================================================
@@ -1549,80 +1488,6 @@ class PlayEngine:
         )
 
         return result.size_usdt
-
-    def _get_risk_policy(self):
-        """
-        Get or create the risk policy instance.
-
-        Lazy initialization to avoid import at module level.
-
-        Returns:
-            RiskPolicy instance (NoneRiskPolicy or RulesRiskPolicy)
-        """
-        if self._risk_policy is None:
-            from ..backtest.risk_policy import create_risk_policy
-            from ..backtest.system_config import RiskProfileConfig
-
-            # Create a RiskProfileConfig from PlayEngineConfig
-            # This bridges the config models
-            risk_profile = RiskProfileConfig(
-                initial_equity=self.config.initial_equity,
-                sizing_model=self.config.sizing_model,
-                risk_per_trade_pct=self.config.risk_per_trade_pct,
-                max_leverage=self.config.max_leverage,
-                min_trade_usdt=self.config.min_trade_usdt,
-                taker_fee_rate=self.config.taker_fee_rate,
-            )
-
-            self._risk_policy = create_risk_policy(
-                risk_mode=self.config.risk_mode,
-                risk_profile=risk_profile,
-            )
-
-        return self._risk_policy
-
-    def _check_risk_policy(self, signal: "Signal"):
-        """
-        Check if a signal passes risk policy rules.
-
-        Uses current exchange state for accurate risk evaluation.
-
-        Args:
-            signal: Trading signal to check
-
-        Returns:
-            RiskDecision with allowed/denied status and reason
-        """
-        policy = self._get_risk_policy()
-
-        # Get current portfolio state from exchange
-        equity = self.exchange.get_equity()
-        balance = self.exchange.get_balance()
-        position = self.exchange.get_position(self.symbol)
-
-        # Calculate exposure and unrealized PnL
-        total_exposure = position.size_usdt if position else 0.0
-        unrealized_pnl = 0.0
-        position_count = 0
-
-        if position:
-            position_count = 1
-            # Try to get unrealized PnL if exchange supports it
-            get_upnl_fn = getattr(self.exchange, 'get_unrealized_pnl', None)
-            if get_upnl_fn is not None:
-                unrealized_pnl = get_upnl_fn(self.symbol)
-
-        # Check signal against policy
-        decision = policy.check(
-            signal=signal,
-            equity=equity,
-            available_balance=balance,
-            total_exposure=total_exposure,
-            unrealized_pnl=unrealized_pnl,
-            position_count=position_count,
-        )
-
-        return decision
 
     def _check_limit_expiry(self, current_bar: int) -> None:
         """Cancel unfilled limit orders after expire_after_bars exec bars."""

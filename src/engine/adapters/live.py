@@ -1027,10 +1027,6 @@ class LiveDataProvider:
             })
         return specs
 
-    async def _load_bars_from_db(self) -> list:
-        """Load bars from DuckDB for warm-up (exec TF)."""
-        return await self._load_bars_from_db_for_tf(self._timeframe)
-
     async def _load_bars_from_db_for_tf(self, tf_str: str) -> list:
         """
         Load bars from DuckDB for warm-up for a specific timeframe.

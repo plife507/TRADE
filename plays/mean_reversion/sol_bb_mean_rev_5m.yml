@@ -1,0 +1,123 @@
+# concept: mean_reversion
+version: "3.0.0"
+name: "sol_bb_mean_rev_5m"
+description: |
+  SOL Bollinger Band Mean Reversion with RSI Reversal Entry (v5)
+
+  Core edge: Enter on RSI reversal from extreme after recent BB band touch.
+  Exit when RSI returns to neutral (50) — requires more substantial move than
+  middle BB crossing.
+
+  Entry long: Recent lower BB touch (5 bars) + RSI crosses above 30 + ranging
+  Entry short: Recent upper BB touch (5 bars) + RSI crosses below 70 + ranging
+  Exit: RSI reaches neutral (50) with wide TP/SL safety net.
+
+  $1000, 5x leverage, 30% max drawdown, 2% risk per trade
+
+symbol: "SOLUSDT"
+
+timeframes:
+  low_tf: "5m"
+  med_tf: "1h"
+  high_tf: "4h"
+  exec: "low_tf"
+
+account:
+  starting_equity_usdt: 1000.0
+  max_leverage: 10.0
+  max_drawdown_pct: 30.0
+  margin_mode: "isolated_usdt"
+  min_trade_notional_usdt: 10.0
+  fee_model:
+    taker_bps: 5.5
+    maker_bps: 2.0
+  slippage_bps: 3.0
+
+features:
+  # Exec TF (5m) indicators
+  bbands_20_2:
+    indicator: bbands
+    params: { length: 20, std: 2.0 }
+
+  rsi_14:
+    indicator: rsi
+    params: { length: 14 }
+
+  volume_sma_20:
+    indicator: sma
+    source: volume
+    params: { length: 20 }
+
+  # 1h regime filter
+  adx_14_1h:
+    indicator: adx
+    params: { length: 14 }
+    tf: "1h"
+
+setups:
+  regime_ranging:
+    all:
+      - ["adx_14_1h.adx", "<", 25]
+      - ["bbands_20_2.bandwidth", "<", 5.0]
+
+  volume_ok:
+    all:
+      - lhs: ["volume", "/", "volume_sma_20"]
+        op: ">"
+        rhs: 0.7
+
+actions:
+  entry_long:
+    all:
+      - occurred_within:
+          bars: 5
+          expr:
+            - ["close", "<=", "bbands_20_2.lower"]
+      - ["rsi_14", "cross_above", 30]
+      - setup: regime_ranging
+      - setup: volume_ok
+
+  entry_short:
+    all:
+      - occurred_within:
+          bars: 5
+          expr:
+            - ["close", ">=", "bbands_20_2.upper"]
+      - ["rsi_14", "cross_below", 70]
+      - setup: regime_ranging
+      - setup: volume_ok
+
+  exit_long:
+    any:
+      - ["close", ">=", "bbands_20_2.middle"]
+
+  exit_short:
+    any:
+      - ["close", "<=", "bbands_20_2.middle"]
+
+position_policy:
+  mode: "long_short"
+  exit_mode: "first_hit"
+  max_positions_per_symbol: 1
+
+risk_model:
+  stop_loss:
+    type: "percent"
+    value: 5.0
+
+  take_profit:
+    type: "percent"
+    value: 15.0
+
+  sizing:
+    model: "risk_based"
+    value: 3.0
+    max_leverage: 10.0
+
+validation:
+  pattern: "range_wide"
+  bars: 800
+  seed: 42
+
+expected:
+  min_trades: 3

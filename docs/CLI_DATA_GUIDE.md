@@ -88,9 +88,9 @@ python trade_cli.py backtest run --play my_play --synthetic
 # Override pattern from play's block
 python trade_cli.py backtest run --play my_play --synthetic --synthetic-pattern trend_up_clean
 ```
-Generates synthetic candles in-memory. No DuckDB access needed. The play must have a `synthetic:` block or the command fails. See `docs/SYNTHETIC_DATA_REFERENCE.md` for pattern catalog.
+Generates synthetic candles in-memory. No DuckDB access needed. The play must have a `validation:` block with a `pattern:` field or the command fails. See `docs/SYNTHETIC_DATA_REFERENCE.md` for pattern catalog.
 
-### Run the full 60-play verification suite
+### Run the full 61-play verification suite
 ```bash
 python scripts/run_real_verification.py
 ```

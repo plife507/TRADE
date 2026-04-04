@@ -130,6 +130,7 @@ def _handle_stop(args):
     return stop_play_tool(
         uid=args.uid,
         close_positions=getattr(args, "close_positions", True),
+        confirm=getattr(args, "confirm", False),
     )
 
 
@@ -140,7 +141,7 @@ def _handle_status(args):
 
 def _handle_rebalance(args):
     from src.tools.portfolio_tools import rebalance_play_tool
-    return rebalance_play_tool(uid=args.uid, new_capital=args.capital)
+    return rebalance_play_tool(uid=args.uid, new_capital=args.capital, confirm=getattr(args, "confirm", False))
 
 
 def _handle_plays(args):

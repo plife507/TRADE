@@ -6,8 +6,6 @@ Supports Telegram and Discord via env vars:
 - TRADE_DISCORD_WEBHOOK
 """
 
-from __future__ import annotations
-
 import json
 import os
 import urllib.error

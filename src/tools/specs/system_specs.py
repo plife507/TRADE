@@ -12,6 +12,7 @@ def get_imports():
         test_connection_tool,
         get_server_time_offset_tool,
         get_rate_limit_status_tool,
+        get_ticker_tool,
         get_websocket_status_tool,
         exchange_health_check_tool,
         is_healthy_for_trading_tool,
@@ -21,6 +22,7 @@ def get_imports():
         "test_connection": test_connection_tool,
         "get_server_time_offset": get_server_time_offset_tool,
         "get_rate_limit_status": get_rate_limit_status_tool,
+        "get_ticker": get_ticker_tool,
         "get_websocket_status": get_websocket_status_tool,
         "exchange_health_check": exchange_health_check_tool,
         "is_healthy_for_trading": is_healthy_for_trading_tool,
@@ -55,6 +57,15 @@ SPECS = [
         "category": "system.diagnostics",
         "parameters": {},
         "required": [],
+    },
+    {
+        "name": "get_ticker",
+        "description": "Get ticker data for a symbol (last price, diagnostics/connection testing)",
+        "category": "system.diagnostics",
+        "parameters": {
+            "symbol": {"type": "string", "description": "Trading symbol"},
+        },
+        "required": ["symbol"],
     },
     {
         "name": "get_websocket_status",

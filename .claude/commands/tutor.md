@@ -85,7 +85,7 @@ When tutor mode is invoked:
 | Metrics | `src/backtest/metrics.py` | Sharpe, Sortino, MAE/MFE |
 | Validation | `src/cli/validate.py`, `plays/validation/core/` | Tiered gates, core plays |
 | Forge Audits | `src/forge/audits/` | toolkit, parity, structure, rollup audits |
-| Synthetic Data | `src/forge/validation/synthetic_data.py` | 34 patterns, SyntheticCandlesProvider |
+| Synthetic Data | `src/forge/validation/synthetic_data.py` | 38 patterns, SyntheticCandlesProvider |
 | Signal Subloop | `src/engine/signal/subloop.py` | 1m candle evaluation, TP/SL |
 | Incremental Indicators | `src/indicators/incremental/` | O(1) update, is_ready, factory |
 | Order Execution | `src/core/order_executor.py` | Limit/market orders, fills, callbacks |

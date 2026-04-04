@@ -16,9 +16,11 @@ Usage:
 from __future__ import annotations
 
 import asyncio
+import threading
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, Any
 
+from ..config.constants import LINEAR_SETTLE_COINS
 from ..utils.datetime_utils import utc_now
 from ..utils.logger import get_module_logger
 
@@ -67,6 +69,7 @@ class PlayDeployer:
     def __init__(self, portfolio_manager: PortfolioManager):
         self._pm = portfolio_manager
         self._deployments: dict[int, DeployedPlay] = {}
+        self._lock = threading.RLock()
 
     async def deploy(self, play_path: str, capital: float | None = None) -> int:
         """
@@ -95,6 +98,10 @@ class PlayDeployer:
 
         # Use deploy_config for settle coin routing if available
         settle_coin = play.deploy_config.settle_coin if play.deploy_config else "USDT"
+
+        # Validate settle coin before funding
+        if settle_coin not in LINEAR_SETTLE_COINS:
+            raise ValueError(f"Invalid settle coin '{settle_coin}' — must be one of {LINEAR_SETTLE_COINS}")
 
         logger.info("Deploying play %s on %s with $%.2f capital (%s)", play_id, symbol, capital, settle_coin)
 
@@ -150,7 +157,8 @@ class PlayDeployer:
                 started_at=utc_now().isoformat(),
                 status="running",
             )
-            self._deployments[uid] = deployment
+            with self._lock:
+                self._deployments[uid] = deployment
 
             # Assign play to sub-account
             sub_mgr.assign_play(uid, play_id)
@@ -166,7 +174,7 @@ class PlayDeployer:
             # Cleanup on failure: withdraw funds and delete sub
             logger.exception("Deployment failed for play %s — cleaning up sub uid=%d", play_id, uid)
             try:
-                sub_mgr.withdraw(uid, spec.settle_coin, capital)
+                sub_mgr.withdraw(uid, settle_coin, capital)
             except Exception:
                 pass
             try:
@@ -177,7 +185,8 @@ class PlayDeployer:
 
     async def _run_play(self, uid: int, runner: LiveRunner) -> None:
         """Background task that runs the LiveRunner."""
-        deployment = self._deployments.get(uid)
+        with self._lock:
+            deployment = self._deployments.get(uid)
         try:
             await runner.start()
         except asyncio.CancelledError:
@@ -202,7 +211,8 @@ class PlayDeployer:
         Returns:
             True if stopped successfully
         """
-        deployment = self._deployments.get(uid)
+        with self._lock:
+            deployment = self._deployments.get(uid)
         if not deployment:
             raise KeyError(f"No deployment found for sub uid={uid}")
 
@@ -221,7 +231,6 @@ class PlayDeployer:
         if close_positions:
             try:
                 sub_client = self._pm.sub_account_manager.get_client(uid)
-                from ..config.constants import LINEAR_SETTLE_COINS
                 # Cancel all orders
                 for sc in LINEAR_SETTLE_COINS:
                     try:
@@ -256,14 +265,17 @@ class PlayDeployer:
 
     def get_status(self, uid: int) -> dict[str, Any]:
         """Get status of a deployed play."""
-        deployment = self._deployments.get(uid)
+        with self._lock:
+            deployment = self._deployments.get(uid)
         if not deployment:
             raise KeyError(f"No deployment found for sub uid={uid}")
         return deployment.to_dict()
 
     def get_active(self) -> list[dict[str, Any]]:
         """List all active deployments."""
-        return [d.to_dict() for d in self._deployments.values() if d.status == "running"]
+        with self._lock:
+            active = [d for d in self._deployments.values() if d.status == "running"]
+        return [d.to_dict() for d in active]
 
     def is_healthy(self, uid: int) -> tuple[bool, str]:
         """
@@ -277,7 +289,8 @@ class PlayDeployer:
         Returns:
             (is_healthy, reason)
         """
-        deployment = self._deployments.get(uid)
+        with self._lock:
+            deployment = self._deployments.get(uid)
         if not deployment:
             return False, f"No deployment for uid={uid}"
 

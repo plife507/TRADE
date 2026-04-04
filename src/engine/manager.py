@@ -68,7 +68,6 @@ class InstanceMode(str, Enum):
     """Engine instance mode."""
     LIVE = "live"
     BACKTEST = "backtest"
-    SHADOW = "shadow"
 
 
 @dataclass

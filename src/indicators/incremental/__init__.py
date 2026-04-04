@@ -17,8 +17,6 @@ Usage:
     current_value = ema.value
 """
 
-from __future__ import annotations
-
 # Base class
 from .base import IncrementalIndicator
 

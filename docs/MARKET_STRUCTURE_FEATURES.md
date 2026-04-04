@@ -1,14 +1,14 @@
-# Market Structure Features — Implementation Plan
+# Market Structure Features — Reference
 
-> **Status**: Active implementation plan
+> **Status**: All 6 ICT structure detectors implemented and validated
 > **Created**: 2026-02-26
-> **Purpose**: Detailed specs for new structure detectors and indicators to complete the ICT/SMC chain
+> **Purpose**: Detailed specs for ICT/SMC structure detectors and indicators
 
 ---
 
 ## Why These Features
 
-The current 7 structure detectors (swing, trend, zone, fibonacci, rolling_window, derived_zone, market_structure) cover *price action mechanics* but miss the *institutional narrative*. ICT/SMC theory describes a sequence:
+The 7 core structure detectors (swing, trend, zone, fibonacci, rolling_window, derived_zone, market_structure) cover *price action mechanics*. The 6 ICT detectors add the *institutional narrative*. ICT/SMC theory describes a sequence:
 
 ```
 Liquidity sweep --> Displacement --> FVG creation --> Order block forms
@@ -22,25 +22,29 @@ We have the endpoints (swings, BOS/CHoCH, zones) but lack the connective tissue.
 
 ---
 
-## Build Order
+## Build Order (all Tier 1, 2, 3 structure detectors complete)
 
 ```
-Tier 1 (core ICT chain):
+Tier 1 (core ICT chain) — COMPLETE:
   1. Displacement ────────── simple candle analysis, no deps
   2. Fair Value Gap ──────── 3-candle pattern, no deps
   3. Order Block ─────────── depends on swing + displacement
   4. Liquidity Zones ─────── depends on swing (cluster detection)
 
 Tier 2 (M6 intelligence):
-  5. Volume Profile / POC ── indicator, volume bucketing
-  6. Anchored Vol Profile ── extends #5 with event-based reset
-  7. Premium/Discount ────── trivial, depends on swing pair
+  5. Volume Profile / POC ── indicator (not structure), volume bucketing
+  6. Anchored Vol Profile ── indicator, extends #5 with event-based reset
+  7. Premium/Discount ────── COMPLETE (structure detector)
 
 Tier 3 (refinements):
-  8. Breaker Blocks ──────── depends on order blocks + CHoCH
-  9. Session Highs/Lows ──── time-based reference levels
- 10. Mitigation Tracking ─── enhancement to FVG + OB lifecycle
+  8. Breaker Blocks ──────── COMPLETE (depends on order blocks + CHoCH)
+  9. Session Highs/Lows ──── indicator (not structure), time-based reference levels
+ 10. Mitigation Tracking ─── deferred enhancement to FVG + OB lifecycle
 ```
+
+Note: Items 5, 6, and 9 are indicators, not structure detectors. The 6 ICT structure detectors
+(displacement, fair_value_gap, order_block, liquidity_zones, premium_discount, breaker_block)
+are all implemented and validated.
 
 **Dependency graph:**
 ```
@@ -892,9 +896,9 @@ Adds lifecycle tracking to FVGs and OBs: formation -> first touch -> partial fil
 
 ---
 
-## Implementation Checklist Per Feature
+## Implementation Checklist Per Feature (Reference)
 
-For each new structure detector:
+For each structure detector (all 6 ICT detectors have been implemented following this checklist):
 
 1. [ ] Create `src/structures/detectors/<name>.py`
    - Inherit `BaseIncrementalDetector`
@@ -934,7 +938,7 @@ For each new indicator:
 | Liquidity Zones | `equal_highs_lows` | Multiple swing highs/lows at similar levels, then sweep |
 | Volume Profile | `volume_concentration` | Volume clustered at specific price levels |
 
-These may need to be added to `src/forge/synthetic_data.py` (34 patterns exist, add ~5 more).
+All 4 ICT patterns have been added to `src/forge/validation/synthetic_data.py` (38 patterns total).
 
 ---
 

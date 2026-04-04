@@ -6,8 +6,6 @@ All hot-path dataclasses use __slots__ to minimize per-instance memory
 snapshots hourly, this adds up.
 """
 
-from __future__ import annotations
-
 from dataclasses import dataclass
 from datetime import datetime
 from enum import Enum
@@ -146,13 +144,6 @@ class ShadowEngineStats:
     # Latest market context
     last_mark_price: float = 0.0
     last_funding_rate: float = 0.0
-
-    @property
-    def duration_seconds(self) -> float:
-        if self.started_at is None:
-            return 0.0
-        end = self.stopped_at or datetime(2026, 1, 1)  # placeholder
-        return (end - self.started_at).total_seconds()
 
     @property
     def win_rate(self) -> float:

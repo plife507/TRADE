@@ -17,7 +17,10 @@ from __future__ import annotations
 import asyncio
 import threading
 
+from ..utils.logger import get_module_logger
 from .shared import ToolResult
+
+logger = get_module_logger(__name__)
 
 
 def _run_async(coro):
@@ -218,7 +221,7 @@ def create_sub_account_tool(username: str) -> ToolResult:
 
 
 def fund_sub_account_tool(uid: int, coin: str, amount: float) -> ToolResult:
-    """Transfer funds from main account to sub-account."""
+    """Transfer funds from main account to sub-account (internal transfer, stays on Bybit)."""
     try:
         pm = _get_portfolio_manager()
         transfer_id = pm.sub_account_manager.fund(uid, coin, amount)
@@ -233,7 +236,7 @@ def fund_sub_account_tool(uid: int, coin: str, amount: float) -> ToolResult:
 
 
 def withdraw_sub_account_tool(uid: int, coin: str, amount: float) -> ToolResult:
-    """Transfer funds from sub-account back to main."""
+    """Transfer funds from sub-account back to main (internal transfer, stays on Bybit)."""
     try:
         pm = _get_portfolio_manager()
         transfer_id = pm.sub_account_manager.withdraw(uid, coin, amount)
@@ -343,8 +346,13 @@ def deploy_play_tool(play_id: str, symbol: str, capital: float, confirm: bool = 
         return ToolResult(success=False, error=f"Deploy failed: {e}")
 
 
-def stop_play_tool(uid: int, close_positions: bool = True) -> ToolResult:
+def stop_play_tool(uid: int, close_positions: bool = True, confirm: bool = False) -> ToolResult:
     """Stop a deployed play."""
+    if not confirm:
+        return ToolResult(
+            success=False,
+            error="Stop play requires confirm=True. This stops a live play and may close positions.",
+        )
     try:
         deployer = _get_deployer()
         _run_async(deployer.stop(uid, close_positions))
@@ -375,26 +383,40 @@ def get_play_status_tool(uid: int) -> ToolResult:
         return ToolResult(success=False, error=f"Status query failed: {e}")
 
 
-def rebalance_play_tool(uid: int, new_capital: float) -> ToolResult:
+def rebalance_play_tool(uid: int, new_capital: float, confirm: bool = False) -> ToolResult:
     """Add/remove capital from a deployed play."""
+    if not confirm:
+        return ToolResult(
+            success=False,
+            error="Rebalance requires confirm=True. This transfers real funds between accounts.",
+        )
     try:
         pm = _get_portfolio_manager()
         deployer = _get_deployer()
         status = deployer.get_status(uid)
         old_capital = status.get("capital", 0)
         diff = new_capital - old_capital
+
+        # Use the sub's actual funded coin, not hardcoded USDT
+        sub_info = pm.sub_account_manager.get(uid)
+        coin = sub_info.funded_coin if sub_info.funded_coin else "USDT"
+        if not sub_info.funded_coin:
+            logger.warning(
+                "Sub uid=%d has no funded_coin recorded, falling back to USDT", uid
+            )
+
         if diff > 0:
-            pm.sub_account_manager.fund(uid, "USDT", diff)
+            pm.sub_account_manager.fund(uid, coin, diff)
         elif diff < 0:
-            pm.sub_account_manager.withdraw(uid, "USDT", abs(diff))
+            pm.sub_account_manager.withdraw(uid, coin, abs(diff))
         # Update tracked capital on the deployment
         deployment = deployer._deployments.get(uid)
         if deployment:
             deployment.capital = new_capital
         return ToolResult(
             success=True,
-            message=f"Rebalanced sub uid={uid}: ${old_capital:.2f} → ${new_capital:.2f}",
-            data={"uid": uid, "old_capital": old_capital, "new_capital": new_capital, "transfer": diff},
+            message=f"Rebalanced sub uid={uid}: ${old_capital:.2f} → ${new_capital:.2f} ({coin})",
+            data={"uid": uid, "old_capital": old_capital, "new_capital": new_capital, "transfer": diff, "coin": coin},
             source="rest_api",
         )
     except Exception as e:

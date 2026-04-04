@@ -15,8 +15,6 @@ Performance Contract:
 - RingBuffer.__getitem__(): O(1)
 """
 
-from __future__ import annotations
-
 from collections import deque
 from typing import Literal
 

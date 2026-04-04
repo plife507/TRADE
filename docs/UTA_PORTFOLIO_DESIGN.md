@@ -1,7 +1,6 @@
 # UTA Portfolio Management — Full Design Reference
 
 > Compiled from Bybit V5 API docs, pybit SDK, and live account investigation.
-> Branch: `feature/uta-portfolio-management`
 > Date: 2026-04-03
 
 ## 1. Account Structure

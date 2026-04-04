@@ -975,9 +975,9 @@ class Play:
         account_dict = d.get("account")
         account = AccountConfig.from_dict(account_dict) if account_dict else None
 
-        # Parse mode-specific configs (backward compat: fall back to account: values)
-        backtest_cfg = BacktestConfig.from_dict(d.get("backtest"), account_dict)
-        deploy_cfg = DeployConfig.from_dict(d.get("deploy"), account_dict)
+        # Parse mode-specific configs
+        backtest_cfg = BacktestConfig.from_dict(d.get("backtest"))
+        deploy_cfg = DeployConfig.from_dict(d.get("deploy"))
 
         # Parse timeframes
         exec_tf, tf_mapping, _ = cls._parse_timeframes(d)

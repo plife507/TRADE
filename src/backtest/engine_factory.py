@@ -96,8 +96,8 @@ def create_engine_from_play(
         StrategyInstanceInputs,
         DataBuildConfig,
     )
-    from .features.feature_spec import FeatureSpec, InputSource as FSInputSource
-    from .feature_registry import FeatureType
+    from .features.feature_spec import FeatureSpec
+    from .feature_registry import FeatureType, InputSource
 
     # Validate required sections
     if play.account is None:
@@ -119,15 +119,15 @@ def create_engine_from_play(
             return None  # Structures don't have FeatureSpecs
         # Map InputSource enum
         input_source_map = {
-            "close": FSInputSource.CLOSE,
-            "open": FSInputSource.OPEN,
-            "high": FSInputSource.HIGH,
-            "low": FSInputSource.LOW,
-            "volume": FSInputSource.VOLUME,
-            "hlc3": FSInputSource.HLC3,
-            "ohlc4": FSInputSource.OHLC4,
+            "close": InputSource.CLOSE,
+            "open": InputSource.OPEN,
+            "high": InputSource.HIGH,
+            "low": InputSource.LOW,
+            "volume": InputSource.VOLUME,
+            "hlc3": InputSource.HLC3,
+            "ohlc4": InputSource.OHLC4,
         }
-        fs_input = input_source_map.get(feature.input_source.value, FSInputSource.CLOSE)
+        fs_input = input_source_map.get(feature.input_source.value, InputSource.CLOSE)
         return FeatureSpec(
             indicator_type=feature.indicator_type,
             output_key=feature.id,
@@ -478,8 +478,7 @@ def run_engine_with_play(
     # Use play_hash from engine if set (runner pipeline), otherwise compute
     play_hash = engine._play_hash or compute_play_hash(play)
 
-    # Use metrics from BacktestResult (has compatibility mapping via .metrics property)
-    metrics = backtest_result.metrics
+    metrics = backtest_result.metadata.get("computed_metrics")
 
     # Convert BacktestResult to PlayBacktestResult
     return PlayBacktestResult(

@@ -53,7 +53,7 @@ Modular reference in `docs/dsl/`:
 | `structures.md` | 13 structure types — swing, trend, MS, fib, zone, FVG, OB, liq, PD, breaker |
 | `conditions.md` | Operators, logic, setups, windows |
 | `risk.md` | SL/TP, trailing, sizing, entries |
-| `patterns.md` | 34 synthetic patterns |
+| `patterns.md` | 38 synthetic patterns |
 | `pitfalls.md` | Critical mistakes |
 | `recipes.md` | 7 complete example plays |
 

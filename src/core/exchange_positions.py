@@ -283,36 +283,6 @@ def set_margin_mode(manager: "ExchangeManager", symbol: str, mode: str, leverage
         ) from e
 
 
-def set_position_mode(manager: "ExchangeManager", mode: str = "MergedSingle") -> bool:
-    """
-    Set position mode for the account.
-    
-    Args:
-        manager: ExchangeManager instance
-        mode: "MergedSingle" (one-way) or "BothSide" (hedge mode)
-    
-    Returns:
-        True if successful
-    """
-    try:
-        
-        mode_int = 0 if mode == "MergedSingle" else 3  # 0=one-way, 3=hedge
-        for coin in LINEAR_SETTLE_COINS:
-            try:
-                manager.bybit.switch_position_mode_v5(mode=mode_int, coin=coin)
-            except Exception as coin_err:
-                if "not modified" not in str(coin_err).lower():
-                    manager.logger.warning("Position mode switch for %s: %s", coin, coin_err)
-        manager.logger.info("Set position mode to %s", mode)
-        return True
-    except Exception as e:
-        # Mode might already be set
-        if "position mode is not modified" in str(e).lower():
-            return True
-        manager.logger.error("Set position mode failed: %s", e)
-        return False
-
-
 def add_margin(manager: "ExchangeManager", symbol: str, amount: float) -> bool:
     """
     Add margin to an isolated position.

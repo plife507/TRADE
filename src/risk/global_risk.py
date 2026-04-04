@@ -520,10 +520,4 @@ def get_global_risk_view(
         return _global_risk_view
 
 
-def reset_global_risk_view():
-    """Reset the global risk view singleton (for testing)."""
-    global _global_risk_view
-    
-    with _grv_lock:
-        _global_risk_view = None
 

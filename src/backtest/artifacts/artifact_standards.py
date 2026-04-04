@@ -672,16 +672,6 @@ class RunManifest:
         return True, ""
 
 
-@dataclass
-class ManifestVerificationResult:
-    """Result of manifest verification."""
-    is_valid: bool
-    folder_matches: bool
-    hash_integrity: bool
-    errors: list[str] = field(default_factory=list)
-    warnings: list[str] = field(default_factory=list)
-
-
 def verify_run_folder(run_folder: Path) -> tuple[bool, str]:
     """
     Verify a run folder's manifest matches its folder name and internal consistency.
@@ -1006,7 +996,7 @@ class ResultsSummary:
     # Gate D required fields (for artifact validation)
     play_hash: str = ""
     pipeline_version: str = ""
-    resolved_idea_path: str = ""
+    resolved_play_path: str = ""
     
     # Determinism hashes (Phase 3 - hash-based verification)
     trades_hash: str = ""     # SHA256 hash of trades.parquet content
@@ -1116,7 +1106,7 @@ class ResultsSummary:
             # Gate D required fields
             "play_hash": self.play_hash,
             "pipeline_version": self.pipeline_version,
-            "resolved_idea_path": self.resolved_idea_path,
+            "resolved_play_path": self.resolved_play_path,
             # Determinism hashes (Phase 3)
             "trades_hash": self.trades_hash,
             "equity_hash": self.equity_hash,
@@ -1281,7 +1271,7 @@ def compute_results_summary(
     # Gate D required fields
     play_hash: str = "",
     pipeline_version: str = "",
-    resolved_idea_path: str = "",
+    resolved_play_path: str = "",
     # Determinism hashes (Phase 3)
     trades_hash: str = "",
     equity_hash: str = "",
@@ -1313,7 +1303,7 @@ def compute_results_summary(
         run_duration_seconds: Run duration
         play_hash: Play hash for determinism tracking
         pipeline_version: Pipeline version string
-        resolved_idea_path: Path where Play was loaded from
+        resolved_play_path: Path where Play was loaded from
         trades_hash: SHA256 hash of trades output
         equity_hash: SHA256 hash of equity curve output
         run_hash: Combined hash of trades + equity for determinism
@@ -1333,7 +1323,7 @@ def compute_results_summary(
         run_duration_seconds=run_duration_seconds,
         play_hash=play_hash,
         pipeline_version=pipeline_version,
-        resolved_idea_path=resolved_idea_path,
+        resolved_play_path=resolved_play_path,
         trades_hash=trades_hash,
         equity_hash=equity_hash,
         run_hash=run_hash,

@@ -143,14 +143,6 @@ def set_collateral_coin(client: "BybitClient", coin: str, switch: str) -> dict:
     return client._extract_result(response)
 
 
-def batch_set_collateral_coin(client: "BybitClient", coins: list[dict[str, str]]) -> dict:
-    """Batch set collateral coins."""
-    client._private_limiter.acquire()
-
-    response = client._session.batch_set_collateral_coin(request=coins)
-    return client._extract_result(response)
-
-
 def get_borrow_history(
     client: "BybitClient",
     time_range: TimeRange,
@@ -178,18 +170,6 @@ def get_borrow_history(
     return client._extract_result(response)
 
 
-def repay_liability(client: "BybitClient", coin: str | None = None) -> dict:
-    """Repay liabilities in Unified account."""
-    client._private_limiter.acquire()
-
-    kwargs: dict[str, str] = {}
-    if coin:
-        kwargs["coin"] = coin
-
-    response = client._session.repay_liability(**kwargs)
-    return client._extract_result(response)
-
-
 def get_coin_greeks(client: "BybitClient", base_coin: str | None = None) -> list[dict]:
     """Get options Greeks for coins."""
     client._private_limiter.acquire()
@@ -211,14 +191,6 @@ def set_account_margin_mode(client: "BybitClient", margin_mode: str) -> dict:
     return client._extract_result(response)
 
 
-def upgrade_to_unified_account(client: "BybitClient") -> dict:
-    """Upgrade to Unified Trading Account."""
-    client._private_limiter.acquire()
-
-    response = client._session.upgrade_to_unified_trading_account()
-    return client._extract_result(response)
-
-
 def get_transferable_amount(client: "BybitClient", coin: str) -> dict:
     """Get amount available to transfer out using Bybit V5 asset coin balance API."""
     client._private_limiter.acquire()
@@ -231,57 +203,3 @@ def get_transferable_amount(client: "BybitClient", coin: str) -> dict:
     return result
 
 
-def get_mmp_state(client: "BybitClient", base_coin: str) -> dict:
-    """Get Market Maker Protection state."""
-    client._private_limiter.acquire()
-
-    response = client._session.get_mmp_state(baseCoin=base_coin)
-    return client._extract_result(response)
-
-
-def set_mmp(
-    client: "BybitClient",
-    base_coin: str,
-    window: int,
-    frozen_period: int,
-    qty_limit: str,
-    delta_limit: str,
-) -> dict:
-    """Configure Market Maker Protection."""
-    client._private_limiter.acquire()
-
-    response = client._session.set_mmp(
-        baseCoin=base_coin,
-        window=str(window),
-        frozenPeriod=str(frozen_period),
-        qtyLimit=qty_limit,
-        deltaLimit=delta_limit,
-    )
-    return client._extract_result(response)
-
-
-def reset_mmp(client: "BybitClient", base_coin: str) -> dict:
-    """Reset MMP status."""
-    client._private_limiter.acquire()
-
-    response = client._session.reset_mmp(baseCoin=base_coin)
-    return client._extract_result(response)
-
-
-def get_borrow_quota(
-    client: "BybitClient",
-    category: str,
-    symbol: str,
-    side: str,
-) -> dict:
-    """Get borrow quota for spot margin trading."""
-    client._private_limiter.acquire()
-
-    # pybit generates this method dynamically at runtime
-    get_borrow_quota_fn = getattr(client._session, "get_spot_margin_trade_borrow_quota")
-    response = get_borrow_quota_fn(
-        category=category,
-        symbol=symbol,
-        side=side,
-    )
-    return client._extract_result(response)

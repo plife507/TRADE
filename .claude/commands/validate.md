@@ -89,10 +89,10 @@ python trade_cli.py validate module --module core
 | `risk` | G4b | 9 risk plays |
 | `audits` | G2 + G3 | registry + parity audits |
 | `operators` | G8 | 25 operator plays |
-| `structures` | G9 | 14 structure plays |
+| `structures` | G9 | 26 structure plays |
 | `complexity` | G10 | 13 complexity plays |
-| `indicators` | G12 | 84 indicator plays |
-| `patterns` | G13 | 34 pattern plays |
+| `indicators` | G12 | 88 indicator plays |
+| `patterns` | G13 | 38 pattern plays |
 | `parity` | G5 + G6 | structure + rollup parity |
 | `sim` | G7 | sim order smoke |
 | `metrics` | G11 | financial math audit |
@@ -139,7 +139,7 @@ python trade_cli.py debug metrics
 Gate results print incrementally as they complete:
 ```
  G1   YAML Parse ............... PASS  5 plays                0.0s
- G2   Registry Contract ........ PASS  44 indicators          0.6s
+ G2   Registry Contract ........ PASS  47 indicators          0.6s
        G4 1/5 V_CORE_001_indicator_cross...
        G4 2/5 V_CORE_002_structure_chain...
        G4b 3/9 V_RISK_003_drawdown_50pct...

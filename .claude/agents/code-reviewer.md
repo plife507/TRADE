@@ -16,17 +16,28 @@ You are a senior code reviewer for the TRADE trading bot. Your reviews ensure co
 
 - [ ] No backward compatibility shims (ALL FORWARD, NO LEGACY)
 - [ ] No legacy code preserved (delete unused paths)
-- [ ] Uses `size_usdt` everywhere (never `size_usd` or `size`)
 - [ ] No pytest files (validation through CLI only)
 - [ ] Timeframe naming: `low_tf`, `med_tf`, `high_tf`, `exec` (never HTF/LTF/MTF)
+- [ ] UTC-naive timestamps only (no tz-aware datetimes inside system boundaries)
+- [ ] Uses `utc_now()` not `datetime.now()` or `datetime.utcnow()`
+- [ ] Uses `get_module_logger(__name__)` not bare `logging.getLogger()`
 
 ### Architecture Boundaries
 
-- [ ] Engine code in `src/engine/` (PlayEngine is the ONE engine)
-- [ ] Backtest infrastructure in `src/backtest/` (sim, runtime, features - NOT an engine)
-- [ ] Live code in `src/core/` doesn't have simulator assumptions
-- [ ] Indicators in `src/indicators/` are all incremental O(1)
-- [ ] Structures in `src/structures/` use `@register_structure` decorator
+| Module | Path | Boundary Rule |
+|--------|------|--------------|
+| Engine | `src/engine/` | PlayEngine is the ONE unified engine for backtest/live |
+| Backtest Infra | `src/backtest/` | Sim, runtime, features, DSL rules — NOT an engine |
+| Play Model | `src/backtest/play/` | Play, BacktestConfig, DeployConfig — strategy configuration |
+| Shadow | `src/shadow/` | Shadow daemon runs independently, NOT through engine factory |
+| Portfolio/Live | `src/core/` | Exchange manager, portfolio, sub-accounts, play deployer, risk, safety |
+| Exchange Clients | `src/exchanges/` | Bybit API clients only — no business logic here |
+| Risk | `src/risk/` | Global risk view |
+| Indicators | `src/indicators/` | All incremental O(1), registry-based |
+| Structures | `src/structures/` | Use `@register_structure` decorator |
+| Tools | `src/tools/` | Tool registry, ToolResult envelope — canonical business logic |
+| Config | `src/config/` | Config loader, constants |
+| Utils | `src/utils/` | Logger, debug, datetime_utils — shared utilities |
 
 ### Engine Specifics
 
@@ -48,7 +59,16 @@ You are a senior code reviewer for the TRADE trading bot. Your reviews ensure co
 - [ ] No hardcoded API keys or secrets
 - [ ] Risk checks before order execution
 - [ ] Proper error handling for exchange calls
-- [ ] Demo mode tested before live
+- [ ] Sub-account isolation maintained (no cross-account operations)
+- [ ] `reduce_only=True` on all close/partial-close market orders
+- [ ] Fail-closed safety guards (block trading when data unavailable)
+
+### Timestamp Safety (G17 Enforced)
+
+- [ ] No `datetime.now()` or `datetime.utcnow()` — use `utc_now()`
+- [ ] No `.timestamp() * 1000` — use `datetime_to_epoch_ms()`
+- [ ] No `datetime.fromtimestamp(x)` without `tz=timezone.utc` + `.replace(tzinfo=None)`
+- [ ] No bare `.fromisoformat()` without `.replace(tzinfo=None)`
 
 ## Review Process
 

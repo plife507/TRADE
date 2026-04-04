@@ -95,20 +95,6 @@ def subscribe_ticker(client: "BybitClient", symbol: str | list[str], callback: C
     client.logger.info("Subscribed to ticker: %s", symbol)
 
 
-def subscribe_orderbook(client: "BybitClient", symbol: str | list[str], callback: Callable, depth: int = 50):
-    """Subscribe to orderbook updates."""
-    ws = connect_public_ws(client)
-    ws.orderbook_stream(depth=depth, symbol=symbol, callback=callback)
-    client.logger.info("Subscribed to orderbook(%s): %s", depth, symbol)
-
-
-def subscribe_trades(client: "BybitClient", symbol: str | list[str], callback: Callable):
-    """Subscribe to public trade stream."""
-    ws = connect_public_ws(client)
-    ws.trade_stream(symbol=symbol, callback=callback)
-    client.logger.info("Subscribed to trades: %s", symbol)
-
-
 def subscribe_klines(client: "BybitClient", symbol: str | list[str], interval: int | str, callback: Callable):
     """Subscribe to kline/candlestick updates.
 

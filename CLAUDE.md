@@ -28,8 +28,8 @@ When working with this codebase, target `src/` not `scripts/` unless explicitly 
 src/engine/        # ONE unified engine (PlayEngine) for backtest/live
 src/shadow/        # Shadow daemon (SimExchange + PerformanceDB, multi-play, live WS data)
 src/core/          # Exchange, portfolio, sub-account management, risk
-src/indicators/    # 44 indicators (all incremental O(1))
-src/structures/    # 7 structure types (swing, trend, zone, fib, derived_zone, rolling_window, market_structure)
+src/indicators/    # 47 indicators (all incremental O(1))
+src/structures/    # 13 structure types (7 core + 6 ICT: breaker_block, displacement, fair_value_gap, liquidity_zones, order_block, premium_discount)
 src/backtest/      # Infrastructure only (sim, runtime, features) - NOT an engine
 src/data/          # DuckDB historical data (1m candles mandatory for all runs)
 src/tools/         # CLI/API surface (22 portfolio tools + 60+ existing)
@@ -372,9 +372,9 @@ python trade_cli.py validate full --gate-timeout 300  # Per-gate timeout (defaul
 # Backtest
 python trade_cli.py backtest run --play X --sync  # Run single backtest
 python trade_cli.py -v backtest run --play X --synthetic  # Verbose: see signal traces
-python scripts/run_full_suite.py                      # 170-play synthetic suite
+python scripts/run_full_suite.py                      # 229-play synthetic suite
 python scripts/run_full_suite.py --real --start 2025-01-01 --end 2025-06-30  # Real data suite
-python scripts/run_real_verification.py               # 60-play real verification
+python scripts/run_real_verification.py               # 61-play real verification
 python scripts/verify_trade_math.py --play X          # Math verification for a play
 
 # Debug (diagnostic tools — all --json use {"status","message","data"} envelope)
@@ -403,7 +403,7 @@ python trade_cli.py portfolio recall-all --confirm      # Emergency stop all
 
 ## Validation Coverage
 
-The `coverage` module (gate G15) automatically detects which indicators and structures lack validation plays. It compares the indicator registry (44 indicators) and structure registry (7 types) against the plays in `plays/validation/indicators/` and `plays/validation/structures/`.
+The `coverage` module (gate G15) automatically detects which indicators and structures lack validation plays. It compares the indicator registry (47 indicators) and structure registry (13 types) against the plays in `plays/validation/indicators/` and `plays/validation/structures/`.
 
 ```bash
 # Check for gaps (human-readable)
@@ -444,7 +444,7 @@ See `docs/LIQUIDATION_PARITY_REVIEW.md` for full analysis.
 ### Phase 2: Bankruptcy price settlement
 - [ ] Implement bankruptcy price calculation in `liquidation_model.py`
 - [ ] Change exchange sim to settle at bankruptcy price (not mark)
-- [ ] **GATE**: `python scripts/run_full_suite.py` — 170/170 pass
+- [ ] **GATE**: `python scripts/run_full_suite.py` — 229/229 pass
 
 ### Phase 3: Unify liquidation price formulas
 - [ ] Remove `calculate_liquidation_price_simple()`, use single canonical formula
@@ -461,25 +461,24 @@ See `docs/LIQUIDATION_PARITY_REVIEW.md` for full analysis.
 
 | Topic | Location |
 |-------|----------|
+| **Deployment path & spec** | `docs/DEPLOYMENT_SPEC.md` (living doc) |
 | Goal & module architecture | `docs/architecture/ARCHITECTURE.md` |
 | Project status & active work | `docs/TODO.md` |
-| New feature specs (FVG, OB, etc.) | `docs/MARKET_STRUCTURE_FEATURES.md` |
 | DSL syntax (frozen) | `docs/PLAY_DSL_REFERENCE.md` |
 | DSL playbook (modular) | `docs/dsl/` (8 modules) |
 | Validation best practices | `docs/VALIDATION_BEST_PRACTICES.md` |
 | Synthetic data patterns | `docs/SYNTHETIC_DATA_REFERENCE.md` |
 | CLI patterns | `docs/CLI_QUICK_REFERENCE.md` |
-| Agent readiness scorecard | `docs/AGENT_READINESS_EVALUATION.md` |
 | Shadow exchange design | `docs/SHADOW_EXCHANGE_DESIGN.md` |
-| Shadow order fidelity review | `docs/SHADOW_ORDER_FIDELITY_REVIEW.md` |
 | VPS deployment | `docs/DEPLOYMENT_GUIDE.md` |
+| UTA portfolio design | `docs/UTA_PORTFOLIO_DESIGN.md` |
+| UTA portfolio spec | `docs/UTA_PORTFOLIO_SPEC.md` |
 | Multi-account architecture | `docs/MULTI_ACCOUNT_ARCHITECTURE.md` |
-| CRT + TBS strategy review | `docs/CRT_TBS_STRATEGY_REVIEW.md` |
-| Structure detection audit | `docs/STRUCTURE_DETECTION_AUDIT.md` |
-| TV parity verification design | `docs/TV_PARITY_DESIGN.md` |
-| UTA portfolio design (API reference) | `docs/UTA_PORTFOLIO_DESIGN.md` |
-| UTA portfolio spec (implementation) | `docs/UTA_PORTFOLIO_SPEC.md` |
+| ICT structure reference | `docs/MARKET_STRUCTURE_FEATURES.md` |
+| TV parity design | `docs/TV_PARITY_DESIGN.md` |
+| Agent readiness | `docs/AGENT_READINESS_EVALUATION.md` |
 | System defaults | `config/defaults.yml` |
+| Completed audits | `docs/archive/` |
 
 ## Reference Documentation
 

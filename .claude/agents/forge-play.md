@@ -72,7 +72,8 @@ Read the modules you need from `docs/dsl/`. Always read pitfalls.md.
 | breakout | `plays/breakout/` | Donchian, rolling_window, vol SMA | rolling_window |
 | scalping | `plays/scalping/` | EMA, RSI, VWAP, Stoch | — |
 | range_trading | `plays/range_trading/` | BBands, RSI, Stoch | zone, derived_zone |
-| ict | `plays/ict/` | ATR, RSI | swing, ms, fvg, ob, liq, pd |
+| ict_sweep | `plays/ict_sweep/` | ATR, RSI | swing, ms, fvg, ob, liq, pd |
+| shadow | `plays/shadow/` | Various | Various — shadow daemon plays |
 
 ### Step 3: YAML generation rules
 

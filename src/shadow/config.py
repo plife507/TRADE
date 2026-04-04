@@ -4,8 +4,6 @@ Shadow Exchange configuration.
 Loaded from config/shadow.yml or constructed programmatically.
 """
 
-from __future__ import annotations
-
 from dataclasses import dataclass
 
 

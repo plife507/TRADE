@@ -60,16 +60,23 @@ class FeatureType(Enum):
     STRUCTURE = "structure"
 
 
-class InputSource(Enum):
-    """Input source for indicators."""
-    CLOSE = "close"
+class InputSource(str, Enum):
+    """
+    Data sources for indicator computation.
+
+    OHLCV: Use the named price column directly.
+    Composite: HL2, HLC3, OHLC4 computed from multiple columns.
+    INDICATOR: Use another indicator's output as input (for chained indicators).
+    """
     OPEN = "open"
     HIGH = "high"
     LOW = "low"
+    CLOSE = "close"
     VOLUME = "volume"
-    HL2 = "hl2"
-    HLC3 = "hlc3"
-    OHLC4 = "ohlc4"
+    HL2 = "hl2"        # (high + low) / 2
+    HLC3 = "hlc3"      # (high + low + close) / 3
+    OHLC4 = "ohlc4"    # (open + high + low + close) / 4
+    INDICATOR = "indicator"  # Reference another indicator's output
 
 
 @dataclass(frozen=True)

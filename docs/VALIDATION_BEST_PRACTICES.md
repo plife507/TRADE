@@ -10,10 +10,10 @@ How to use the TRADE validation system effectively.
 |-----------|---------|-----|
 | Before every commit | `validate quick` | Catches indicator/engine regressions fast |
 | Before merging a branch | `validate standard` | Adds structure parity, play suites, metrics |
-| Before a release | `validate full` | Full coverage: all 170+ plays + determinism |
+| Before a release | `validate full` | Full coverage: all 229 plays + determinism |
 | Before deploying a play live | `validate pre-live --play X` | Connectivity, balance, conflict, config checks |
 | After changing exchange/API code | `validate exchange` | Tests real Bybit API endpoints |
-| Verifying real-data coverage | `validate real` | Syncs data once, runs 61 RV plays in parallel |
+| After real-data changes | `validate real` | Syncs data once, runs 61 RV plays in parallel |
 
 **Rule of thumb**: run the minimum tier that covers what you changed.
 
@@ -58,10 +58,10 @@ python trade_cli.py validate module --module indicators --workers 2
 | `risk` | G4b | 9 | ~30s |
 | `audits` | G2+G3 | - | ~2s |
 | `operators` | G8 | 25 | ~20s |
-| `structures` | G9 | 14 | ~15s |
+| `structures` | G9 | 26 | ~15s |
 | `complexity` | G10 | 13 | ~15s |
-| `indicators` | G12 | 84 | ~30s |
-| `patterns` | G13 | 34 | ~20s |
+| `indicators` | G12 | 88 | ~30s |
+| `patterns` | G13 | 38 | ~20s |
 | `parity` | G5+G6 | - | ~1s |
 | `sim` | G7 | - | ~1s |
 | `metrics` | G11 | - | <1s |

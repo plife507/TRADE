@@ -375,20 +375,10 @@ class BybitClient:
         return acct.set_collateral_coin(self, coin, switch)
     
     @handle_pybit_errors
-    def batch_set_collateral_coin(self, coins: list[dict[str, str]]) -> dict:
-        from . import bybit_account as acct
-        return acct.batch_set_collateral_coin(self, coins)
-    
-    @handle_pybit_errors
     def get_borrow_history(self, time_range: TimeRange, currency: str | None = None,
                            limit: int = 50, cursor: str | None = None) -> dict:
         from . import bybit_account as acct
         return acct.get_borrow_history(self, time_range, currency, limit, cursor)
-    
-    @handle_pybit_errors
-    def repay_liability(self, coin: str | None = None) -> dict:
-        from . import bybit_account as acct
-        return acct.repay_liability(self, coin)
     
     @handle_pybit_errors
     def get_coin_greeks(self, base_coin: str | None = None) -> list[dict]:
@@ -401,35 +391,9 @@ class BybitClient:
         return acct.set_account_margin_mode(self, margin_mode)
     
     @handle_pybit_errors
-    def upgrade_to_unified_account(self) -> dict:
-        from . import bybit_account as acct
-        return acct.upgrade_to_unified_account(self)
-    
-    @handle_pybit_errors
     def get_transferable_amount(self, coin: str) -> dict:
         from . import bybit_account as acct
         return acct.get_transferable_amount(self, coin)
-    
-    @handle_pybit_errors
-    def get_mmp_state(self, base_coin: str) -> dict:
-        from . import bybit_account as acct
-        return acct.get_mmp_state(self, base_coin)
-    
-    @handle_pybit_errors
-    def set_mmp(self, base_coin: str, window: int, frozen_period: int,
-                qty_limit: str, delta_limit: str) -> dict:
-        from . import bybit_account as acct
-        return acct.set_mmp(self, base_coin, window, frozen_period, qty_limit, delta_limit)
-    
-    @handle_pybit_errors
-    def reset_mmp(self, base_coin: str) -> dict:
-        from . import bybit_account as acct
-        return acct.reset_mmp(self, base_coin)
-    
-    @handle_pybit_errors
-    def get_borrow_quota(self, category: str, symbol: str, side: str) -> dict:
-        from . import bybit_account as acct
-        return acct.get_borrow_quota(self, category, symbol, side)
     
     # ==================== Trading (delegated) ====================
 
@@ -565,14 +529,6 @@ class BybitClient:
     def subscribe_ticker(self, symbol: str | list[str], callback: Callable):
         from . import bybit_websocket as ws
         ws.subscribe_ticker(self, symbol, callback)
-    
-    def subscribe_orderbook(self, symbol: str | list[str], callback: Callable, depth: int = 50):
-        from . import bybit_websocket as ws
-        ws.subscribe_orderbook(self, symbol, callback, depth)
-    
-    def subscribe_trades(self, symbol: str | list[str], callback: Callable):
-        from . import bybit_websocket as ws
-        ws.subscribe_trades(self, symbol, callback)
     
     def subscribe_klines(self, symbol: str | list[str], interval: int | str, callback: Callable):
         from . import bybit_websocket as ws

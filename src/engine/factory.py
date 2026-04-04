@@ -120,7 +120,7 @@ def _build_config_from_play(
         initial_equity = play.deploy_config.capital
         slippage = account.slippage_bps  # Sim-only but kept for sizing estimation
     else:
-        # Fallback to account values (backward compat)
+        # Fallback to account values when mode-specific config sections are absent
         initial_equity = account.starting_equity_usdt
         slippage = account.slippage_bps
 

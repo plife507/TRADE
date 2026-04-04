@@ -1025,6 +1025,86 @@ def _gate_exchange_market_data() -> GateResult:
 
 
 
+def _gate_exchange_order_lifecycle() -> GateResult:
+    """EX4: Order lifecycle — place, verify, amend, cancel (no fills)."""
+    start = time.perf_counter()
+    failures: list[str] = []
+    checked = 0
+
+    try:
+        from src.cli.smoke_tests.exchange_orders import run_order_lifecycle_smoke
+
+        result = run_order_lifecycle_smoke()
+        checked = result["checked"]
+
+        if result.get("skipped"):
+            return GateResult(
+                gate_id="EX4",
+                name="Order Lifecycle",
+                passed=True,
+                checked=0,
+                duration_sec=time.perf_counter() - start,
+                detail=f"SKIPPED: {result['skip_reason']}",
+                failures=[],
+            )
+
+        if result["failures"]:
+            failures.extend(result["failures"])
+    except Exception as e:
+        failures.append(f"Order lifecycle: {e}")
+
+    return GateResult(
+        gate_id="EX4",
+        name="Order Lifecycle",
+        passed=len(failures) == 0,
+        checked=checked,
+        duration_sec=time.perf_counter() - start,
+        detail=f"{checked} steps",
+        failures=failures,
+    )
+
+
+def _gate_pre_live_position_test(play_id: str) -> GateResult:
+    """PL5: Live position lifecycle test (requires --confirm)."""
+    start = time.perf_counter()
+
+    try:
+        from src.cli.smoke_tests.exchange_orders import run_position_lifecycle_smoke
+
+        result = run_position_lifecycle_smoke(play_id)
+
+        if result.get("skipped"):
+            return GateResult(
+                gate_id="PL5",
+                name="Position Lifecycle",
+                passed=True,
+                checked=0,
+                duration_sec=time.perf_counter() - start,
+                detail=f"SKIPPED: {result['skip_reason']}",
+                failures=[],
+            )
+
+        return GateResult(
+            gate_id="PL5",
+            name="Position Lifecycle",
+            passed=len(result["failures"]) == 0,
+            checked=result["checked"],
+            duration_sec=time.perf_counter() - start,
+            detail=f"{result['checked']} steps, cost ~${result.get('cost_usd', 0):.4f}",
+            failures=result["failures"],
+        )
+    except Exception as e:
+        return GateResult(
+            gate_id="PL5",
+            name="Position Lifecycle",
+            passed=False,
+            checked=0,
+            duration_sec=time.perf_counter() - start,
+            detail="error",
+            failures=[f"Position lifecycle: {e}"],
+        )
+
+
 def _gate_exchange_diagnostics() -> GateResult:
     """EX5: Rate limits, WebSocket status, health check, API environment."""
     start = time.perf_counter()
@@ -1498,6 +1578,7 @@ def _make_module_definitions(
         "coverage": [_gate_coverage_check],
         "lint": [_gate_logging_lint],
         "timestamps": [_gate_timestamps],
+        "exchange-orders": [_gate_exchange_order_lifecycle],
         # Real-data modules
         "real-accumulation": [lambda: _gate_real_data_phase("accumulation", "RD1", w, t)],
         "real-markup": [lambda: _gate_real_data_phase("markup", "RD2", w, t)],
@@ -1509,7 +1590,7 @@ def _make_module_definitions(
 MODULE_NAMES = [
     "core", "risk", "audits", "operators", "structures", "complexity",
     "indicators", "patterns", "parity", "sim", "metrics", "determinism",
-    "coverage", "lint", "timestamps",
+    "coverage", "lint", "timestamps", "exchange-orders",
     "real-accumulation", "real-markup", "real-distribution", "real-markdown",
 ]
 
@@ -1579,9 +1660,13 @@ def run_validation(
     module_name: str | None = None,
     play_timeout: int = PLAY_TIMEOUT_SEC,
     gate_timeout: int = GATE_TIMEOUT_SEC,
+    confirm: bool = False,
 ) -> int:
     """
     Run the unified validation suite at the specified tier.
+
+    Args:
+        confirm: Enable destructive tests (position lifecycle in pre-live tier).
 
     Returns:
         Exit code: 0 if all gates pass, 1 if any fail.
@@ -1622,6 +1707,8 @@ def run_validation(
             _gate_yaml_parse,
             _gate_core_plays,
         ]
+        if confirm:
+            gates.append(lambda: _gate_pre_live_position_test(play_id))
         results = _run_gates(
             gates, fail_fast=fail_fast,
             tier=tier.value, start_time=start, json_output=json_output,
@@ -1632,6 +1719,7 @@ def run_validation(
             _gate_exchange_connectivity,
             _gate_exchange_account,
             _gate_exchange_market_data,
+            _gate_exchange_order_lifecycle,
             _gate_exchange_diagnostics,
         ]
         results = _run_gates(

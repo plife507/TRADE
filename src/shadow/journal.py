@@ -8,8 +8,6 @@ Designed for minimal I/O: buffered writes, flush on trade events
 and periodic snapshots. No per-bar writes.
 """
 
-from __future__ import annotations
-
 import json
 
 from ..config.constants import PROJECT_ROOT

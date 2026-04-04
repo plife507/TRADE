@@ -17,8 +17,6 @@ from .feature_frame_builder import (
     FeatureArrays,
     IndicatorCompute,
     get_compute,
-    build_features_from_play,
-    PlayFeatures,
 )
 
 __all__ = [
@@ -33,7 +31,4 @@ __all__ = [
     "FeatureArrays",
     "IndicatorCompute",
     "get_compute",
-    # Play integration
-    "build_features_from_play",
-    "PlayFeatures",
 ]

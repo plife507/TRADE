@@ -1,7 +1,6 @@
 # UTA Portfolio Management — Full Specification
 
-> Branch: `feature/uta-portfolio-management`
-> Status: SPEC COMPLETE, IMPLEMENTATION NOT STARTED
+> Status: COMPLETE (2026-04-04)
 > Date: 2026-04-03
 
 ---

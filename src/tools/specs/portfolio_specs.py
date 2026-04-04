@@ -110,7 +110,7 @@ SPECS = [
     },
     {
         "name": "fund_sub_account",
-        "description": "Transfer funds from main account to sub-account",
+        "description": "Transfer funds from main account to sub-account (internal, stays on Bybit)",
         "category": "portfolio.subs",
         "parameters": {
             "uid": {"type": "integer", "description": "Sub-account UID"},
@@ -121,7 +121,7 @@ SPECS = [
     },
     {
         "name": "withdraw_sub_account",
-        "description": "Transfer funds from sub-account back to main",
+        "description": "Transfer funds from sub-account back to main (internal, stays on Bybit)",
         "category": "portfolio.subs",
         "parameters": {
             "uid": {"type": "integer", "description": "Sub-account UID"},
@@ -186,6 +186,7 @@ SPECS = [
         "parameters": {
             "uid": {"type": "integer", "description": "Sub-account UID running the play"},
             "close_positions": {"type": "boolean", "description": "Close open positions", "default": True},
+            "confirm": {"type": "boolean", "description": "Must be true to proceed", "default": False},
         },
         "required": ["uid"],
     },
@@ -205,6 +206,7 @@ SPECS = [
         "parameters": {
             "uid": {"type": "integer", "description": "Sub-account UID"},
             "new_capital": {"type": "number", "description": "New target capital amount"},
+            "confirm": {"type": "boolean", "description": "Must be true to proceed", "default": False},
         },
         "required": ["uid", "new_capital"],
     },

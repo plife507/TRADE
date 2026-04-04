@@ -1,0 +1,146 @@
+version: 3.0.0
+name: xrp_crt_tbs_long
+description: 'CRT + Turtle Soup long on XRPUSDT: Daily bias, 1h CRT range, 5m sweep
+  + MSS. SL/TP only: 1.5 ATR SL, 3R TP.'
+symbol: XRPUSDT
+timeframes:
+  low_tf: 5m
+  med_tf: 1h
+  high_tf: D
+  exec: low_tf
+account:
+  starting_equity_usdt: 1000.0
+  max_leverage: 10.0
+  max_drawdown_pct: 30.0
+  margin_mode: isolated_usdt
+  fee_model:
+    taker_bps: 5.5
+    maker_bps: 2.0
+  slippage_bps: 2.0
+features:
+  atr_14:
+    indicator: atr
+    params:
+      length: 14
+  ema_20:
+    indicator: ema
+    params:
+      length: 20
+  ema_50_D:
+    indicator: ema
+    params:
+      length: 50
+    tf: D
+structures:
+  high_tf:
+  - type: swing
+    key: swing_D
+    params:
+      left: 3
+      right: 3
+  - type: trend
+    key: trend_D
+    uses: swing_D
+  med_tf:
+  - type: rolling_window
+    key: crt_high
+    params:
+      mode: max
+      source: high
+      size: 1
+  - type: rolling_window
+    key: crt_low
+    params:
+      mode: min
+      source: low
+      size: 1
+  exec:
+  - type: swing
+    key: swing_5m
+    params:
+      left: 5
+      right: 5
+  - type: market_structure
+    key: ms
+    uses: swing_5m
+  - type: liquidity_zones
+    key: liq
+    uses: swing_5m
+    params:
+      atr_key: atr_14
+      tolerance_atr: 0.3
+      sweep_atr: 0.1
+      min_touches: 2
+      max_active: 5
+setups:
+  daily_bullish:
+    any:
+    - - trend_D.direction
+      - ==
+      - 1
+    - - close
+      - '>'
+      - ema_50_D
+  crt_low_swept:
+    occurred_within:
+      bars: 12
+      expr:
+      - - low
+        - <
+        - crt_low.value
+  liq_swept_bullish:
+    occurred_within:
+      bars: 12
+      expr:
+      - - liq.sweep_this_bar
+        - ==
+        - true
+      - - liq.sweep_direction
+        - ==
+        - -1
+  mss_bullish:
+    all:
+    - - ms.choch_this_bar
+      - ==
+      - true
+    - - ms.choch_direction
+      - ==
+      - bullish
+actions:
+  entry_long:
+    all:
+    - setup: daily_bullish
+    - any:
+      - setup: crt_low_swept
+      - setup: liq_swept_bullish
+    - setup: mss_bullish
+    - - close
+      - '>'
+      - crt_low.value
+    - - close
+      - '>'
+      - ema_20
+risk_model:
+  stop_loss:
+    type: atr_multiple
+    value: 1.5
+    atr_feature_id: atr_14
+  take_profit:
+    type: rr_ratio
+    value: 3.0
+  sizing:
+    model: percent_equity
+    value: 20.0
+    max_leverage: 10.0
+position_policy:
+  mode: long_only
+  exit_mode: sl_tp_only
+  max_positions_per_symbol: 1
+entry:
+  order_type: MARKET
+validation:
+  pattern: liquidity_hunt_lows
+  bars: 5000
+  seed: 42
+expected:
+  min_trades: 1

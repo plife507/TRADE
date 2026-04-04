@@ -295,6 +295,11 @@ def _setup_validate_subcommand(subparsers) -> None:
         dest="json_output",
         help="Output results as JSON"
     )
+    validate_parser.add_argument(
+        "--confirm",
+        action="store_true",
+        help="Enable destructive tests (e.g., position lifecycle in pre-live tier)"
+    )
 
 
 def _setup_debug_subcommands(subparsers) -> None:
@@ -735,13 +740,13 @@ def _setup_portfolio_subcommands(subparsers) -> None:
     subs_create.add_argument("--username", required=True, help="Username (6-16 chars, letters+digits)")
     _add_json(subs_create)
 
-    subs_fund = subs_sub.add_parser("fund", help="Transfer funds main → sub")
+    subs_fund = subs_sub.add_parser("fund", help="Transfer funds main → sub (internal)")
     subs_fund.add_argument("--uid", type=int, required=True, help="Sub-account UID")
     subs_fund.add_argument("--coin", required=True, help="Coin (USDT, USDC)")
     subs_fund.add_argument("--amount", type=float, required=True, help="Amount to transfer")
     _add_json(subs_fund)
 
-    subs_withdraw = subs_sub.add_parser("withdraw", help="Transfer funds sub → main")
+    subs_withdraw = subs_sub.add_parser("withdraw", help="Transfer funds sub → main (internal)")
     subs_withdraw.add_argument("--uid", type=int, required=True, help="Sub-account UID")
     subs_withdraw.add_argument("--coin", required=True, help="Coin")
     subs_withdraw.add_argument("--amount", type=float, required=True, help="Amount")
@@ -776,6 +781,7 @@ def _setup_portfolio_subcommands(subparsers) -> None:
     stop_parser.add_argument("--uid", type=int, required=True, help="Sub-account UID")
     stop_parser.add_argument("--no-close-positions", action="store_false", dest="close_positions",
                              help="Don't close open positions")
+    stop_parser.add_argument("--confirm", action="store_true", help="Confirm stop (required)")
     _add_json(stop_parser)
 
     # portfolio status --uid X
@@ -787,6 +793,7 @@ def _setup_portfolio_subcommands(subparsers) -> None:
     rebalance_parser = port_sub.add_parser("rebalance", help="Add/remove capital from deployed play")
     rebalance_parser.add_argument("--uid", type=int, required=True, help="Sub-account UID")
     rebalance_parser.add_argument("--capital", type=float, required=True, help="New target capital")
+    rebalance_parser.add_argument("--confirm", action="store_true", help="Confirm rebalance (required)")
     _add_json(rebalance_parser)
 
     # portfolio plays

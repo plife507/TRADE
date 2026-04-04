@@ -11,8 +11,6 @@ Architecture:
     └── File (machine)   ← QueueHandler → RotatingFileHandler → logs/trade.jsonl
 """
 
-from __future__ import annotations
-
 import logging
 import logging.handlers
 import os

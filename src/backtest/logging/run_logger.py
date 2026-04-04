@@ -23,8 +23,6 @@ Usage:
     run_logger.finalize(net_pnl=125.50, trades_count=12)
 """
 
-from __future__ import annotations
-
 import json
 import logging
 from dataclasses import dataclass

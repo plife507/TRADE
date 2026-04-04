@@ -3,8 +3,6 @@ Rate limiter for API calls.
 Implements token bucket algorithm with separate limits for public and private endpoints.
 """
 
-from __future__ import annotations
-
 import time
 import threading
 from collections import deque

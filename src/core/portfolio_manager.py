@@ -19,6 +19,7 @@ Usage:
 
 from __future__ import annotations
 
+import time
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from dataclasses import dataclass, field
 from datetime import datetime
@@ -69,7 +70,7 @@ class SubAccountSnapshot:
 
 
 @dataclass
-class PortfolioSnapshot:
+class UTAPortfolioSnapshot:
     """Complete point-in-time UTA portfolio state."""
 
     timestamp: datetime
@@ -111,7 +112,7 @@ class PortfolioSnapshot:
 
     def __post_init__(self) -> None:
         assert self.timestamp.tzinfo is None, (
-            f"PortfolioSnapshot.timestamp must be UTC-naive, got tzinfo={self.timestamp.tzinfo}"
+            f"UTAPortfolioSnapshot.timestamp must be UTC-naive, got tzinfo={self.timestamp.tzinfo}"
         )
 
     def to_dict(self) -> dict[str, Any]:
@@ -187,7 +188,7 @@ class PortfolioManager:
 
     # ── Portfolio Snapshot ──────────────────────────────────
 
-    def get_snapshot(self) -> PortfolioSnapshot:
+    def get_snapshot(self) -> UTAPortfolioSnapshot:
         """
         Build complete portfolio state.
 
@@ -196,9 +197,9 @@ class PortfolioManager:
         rate limits, so parallel queries don't interfere.
 
         Returns:
-            PortfolioSnapshot with main + all subs + aggregates
+            UTAPortfolioSnapshot with main + all subs + aggregates
         """
-        snap = PortfolioSnapshot(timestamp=utc_now())
+        snap = UTAPortfolioSnapshot(timestamp=utc_now())
 
         # 1. Main account balance (UTA-wide)
         self._fill_main_account(snap)
@@ -213,7 +214,7 @@ class PortfolioManager:
 
         return snap
 
-    def _fill_main_account(self, snap: PortfolioSnapshot) -> None:
+    def _fill_main_account(self, snap: UTAPortfolioSnapshot) -> None:
         """Populate main account fields from REST."""
         try:
             balance = self._main_client.get_balance()
@@ -347,7 +348,7 @@ class PortfolioManager:
 
         return snap
 
-    def _compute_aggregates(self, snap: PortfolioSnapshot) -> None:
+    def _compute_aggregates(self, snap: UTAPortfolioSnapshot) -> None:
         """Compute aggregate metrics from sub-account snapshots."""
         deployed_equity = 0.0
         total_positions = 0
@@ -483,6 +484,24 @@ class PortfolioManager:
                         results["positions_closed"] += 1
                     except Exception as exc:
                         results["errors"].append(f"Close {pos['symbol']} sub={info.uid}: {exc}")
+
+                # Verify closes — wait briefly, then re-query for remaining positions
+                if positions:
+                    time.sleep(1.0)
+                    try:
+                        remaining = self._sub_mgr.get_positions(info.uid)
+                        for pos in remaining:
+                            rem_size = float(pos.get("size", 0))
+                            if rem_size > 0:
+                                logger.warning(
+                                    "Position still open after close attempt: sub=%d, symbol=%s, side=%s, remaining_size=%s",
+                                    info.uid, pos.get("symbol"), pos.get("side"), rem_size,
+                                )
+                                results["errors"].append(
+                                    f"Position still open: {pos.get('symbol')} sub={info.uid} size={rem_size}"
+                                )
+                    except Exception as exc:
+                        logger.warning("Failed to verify position closes for sub uid=%d: %s", info.uid, exc)
 
                 # Withdraw all coins (USDT, USDC, and any inverse settle coins like BTC/ETH)
                 withdraw_coins = ["USDT", "USDC"]

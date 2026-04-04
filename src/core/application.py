@@ -617,10 +617,3 @@ def get_application(config: Config | None = None) -> Application:
         return _application
 
 
-def reset_application():
-    """Reset the global Application instance (for testing)."""
-    global _application
-    with _app_lock:
-        if _application and _application.is_running:
-            _application.stop()
-        _application = None

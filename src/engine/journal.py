@@ -7,8 +7,6 @@ Each line is a complete JSON object with event type, timestamp, and details.
 Journal files are stored at {project_root}/data/journal/{instance_id}.jsonl
 """
 
-from __future__ import annotations
-
 import json
 from datetime import datetime
 from pathlib import Path

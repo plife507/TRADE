@@ -11,8 +11,6 @@ Design:
 - Schema auto-migration: CREATE TABLE IF NOT EXISTS on init
 """
 
-from __future__ import annotations
-
 from pathlib import Path
 
 import duckdb

@@ -5,7 +5,7 @@
 
 ## 1. Overview
 
-Every Play MUST have a `synthetic:` block. The `--synthetic` CLI flag requires it and will **fail loudly** if missing. There are no default fallbacks -- this is intentional (ALL FORWARD, NO LEGACY).
+Every Play MUST have a `validation:` block with a `pattern:` field. The `--synthetic` CLI flag requires it and will **fail loudly** if missing. There are no default fallbacks -- this is intentional (ALL FORWARD, NO LEGACY).
 
 Synthetic data enables:
 - **Validation without DB access** -- test play logic on deterministic generated data
@@ -16,37 +16,31 @@ Synthetic data enables:
 ## 2. Play YAML Syntax
 
 ```yaml
-synthetic:
+validation:
   pattern: "range_wide"     # REQUIRED: which price pattern to generate
-  bars: 500                 # REQUIRED: bars per slowest timeframe
-  seed: 42                  # REQUIRED: random seed for reproducibility
-  config:                   # Optional: override PatternConfig defaults
-    trend_magnitude: 0.25
-    pullback_depth: 0.20
 
-expected:                   # Optional: assertions checked after backtest
-  min_trades: 3
-  pnl_direction: positive   # positive | negative
+# Bars are auto-computed from warmup requirements.
+# CLI overrides: --synthetic-bars, --synthetic-seed, --synthetic-pattern
 ```
 
 ## 3. CLI Usage
 
 ```bash
-# Use play's synthetic: block (required)
+# Use play's validation: block (required)
 python trade_cli.py backtest run --play my_play --synthetic
 
 # Override specific settings (play's block still required)
 python trade_cli.py backtest run --play my_play --synthetic --synthetic-pattern trend_stairs
 python trade_cli.py backtest run --play my_play --synthetic --synthetic-bars 1000 --synthetic-seed 99
 
-# Fails if play has no synthetic: block
+# Fails if play has no validation: block
 python trade_cli.py backtest run --play play_without_block --synthetic
-# ERROR: Play 'play_without_block' has no synthetic: block.
+# ERROR: Play 'play_without_block' has no validation: block.
 ```
 
 Priority: CLI args override play's block. Play's block is the baseline.
 
-## 4. Pattern Catalog (34 patterns)
+## 4. Pattern Catalog (38 patterns)
 
 ### Trend (6 patterns)
 
@@ -113,6 +107,15 @@ Priority: CLI args override play's block. Play's block is the baseline.
 | `mtf_pullback_bull` | Higher TF up, lower TF pulling back 40-60% | Pullback entries |
 | `mtf_pullback_bear` | Higher TF down, lower TF rallying 40-60% | Pullback entries |
 
+### ICT (4 patterns)
+
+| Pattern | Description | Best for |
+|---------|-------------|----------|
+| `displacement_impulse` | Strong impulsive candles with clear body/wick ratios | Displacement detection |
+| `trending_with_gaps` | Trending market that creates clear 3-candle gaps | FVG detection |
+| `equal_highs_lows` | Multiple swing highs/lows at similar levels, then sweep | Liquidity zone sweeps |
+| `ob_retest` | Displacement from opposing candle, then retracement to OB zone | Order block entries |
+
 ### Legacy (4 patterns)
 
 | Pattern | Description | Notes |
@@ -140,17 +143,15 @@ For **long_short** strategies, use patterns with both directions: `range_wide`, 
 
 ## 6. PatternConfig Overrides
 
-Override defaults via the `config:` block in the play's `synthetic:` section:
+Override defaults via CLI flags or the PatternConfig API:
 
-```yaml
-synthetic:
-  pattern: "trend_up_clean"
-  bars: 500
-  seed: 42
-  config:
-    trend_magnitude: 0.25    # Default: 0.20 (20% price move)
-    pullback_depth: 0.20     # Default: 0.30 (30% retracement)
-    noise_level: 0.5         # Default: 0.3 (0-1 scale)
+```python
+from src.forge.validation.synthetic_data import PatternConfig
+config = PatternConfig(
+    trend_magnitude=0.25,    # Default: 0.20 (20% price move)
+    pullback_depth=0.20,     # Default: 0.30 (30% retracement)
+    noise_level=0.5,         # Default: 0.3 (0-1 scale)
+)
 ```
 
 ### All config parameters
@@ -204,9 +205,9 @@ Same `pattern + bars + seed + timeframes` always produces the same hash. Use thi
 - Warmup consuming too many bars -- increase `bars`
 - Multi-TF dilation making patterns invisible on exec TF
 
-### Play without synthetic block
+### Play without validation block
 - `--synthetic` will fail with clear error message
-- Add a `synthetic:` block before testing
+- Add a `validation:` block with `pattern:` before testing
 
 ### Pattern choice
 - Don't use `trending` (legacy) -- use `trend_up_clean` or `trend_down_clean`

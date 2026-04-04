@@ -2,7 +2,6 @@
 Simulated Exchange orchestrator.
 
 Thin orchestrator that routes to modular components via tool-calling pattern.
-Target: ~200 LOC (max 250 LOC).
 
 Execution model:
 1. Strategy evaluates at bar close (ts_close)
@@ -516,13 +515,6 @@ class SimulatedExchange:
             raise ValueError(f"submit_close: percent must be in [1, 100], got {percent}")
         self._pending_close_reason = reason
         self._pending_close_percent = percent
-    
-    def cancel_pending_order(self) -> bool:
-        """Cancel pending market order."""
-        pending_market = self._order_book.get_pending_orders(OrderType.MARKET, self.symbol)
-        if pending_market:
-            return self._order_book.cancel_order(pending_market[0].order_id)
-        return False
     
     def compute_required_for_entry(self, notional_usdt: float) -> float:
         """Compute required balance for entry."""

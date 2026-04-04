@@ -259,25 +259,16 @@ class BacktestConfig:
         return {"equity": self.equity, "slippage_bps": self.slippage_bps}
 
     @classmethod
-    def from_dict(cls, d: dict | None, account_fallback: dict | None = None) -> "BacktestConfig":
-        """Parse from backtest: section. Falls back to account: for backward compat.
+    def from_dict(cls, d: dict | None) -> "BacktestConfig":
+        """Parse from backtest: section.
 
-        Priority: backtest.equity > account.starting_equity_usdt > defaults.yml
+        Priority: backtest.equity > defaults.yml
         """
         if d is None:
             d = {}
-        fb = account_fallback or {}
 
-        equity = float(
-            d.get("equity")
-            or fb.get("starting_equity_usdt")
-            or DEFAULTS.account.starting_equity_usdt
-        )
-        slippage = float(
-            d.get("slippage_bps")
-            or fb.get("slippage_bps")
-            or DEFAULTS.execution.slippage_bps
-        )
+        equity = float(d.get("equity") or DEFAULTS.account.starting_equity_usdt)
+        slippage = float(d.get("slippage_bps") or DEFAULTS.execution.slippage_bps)
         return cls(equity=equity, slippage_bps=slippage)
 
 
@@ -306,20 +297,15 @@ class DeployConfig:
         }
 
     @classmethod
-    def from_dict(cls, d: dict | None, account_fallback: dict | None = None) -> "DeployConfig":
-        """Parse from deploy: section. Falls back to account: for backward compat.
+    def from_dict(cls, d: dict | None) -> "DeployConfig":
+        """Parse from deploy: section.
 
-        Priority: deploy.capital > account.starting_equity_usdt > defaults.yml
+        Priority: deploy.capital > defaults.yml
         """
         if d is None:
             d = {}
-        fb = account_fallback or {}
 
-        capital = float(
-            d.get("capital")
-            or fb.get("starting_equity_usdt")
-            or DEFAULTS.account.starting_equity_usdt
-        )
+        capital = float(d.get("capital") or DEFAULTS.account.starting_equity_usdt)
         settle_coin = str(d.get("settle_coin", "USDT"))
         dcp_window = int(d.get("dcp_window", 30))
         return cls(capital=capital, settle_coin=settle_coin, dcp_window=dcp_window)

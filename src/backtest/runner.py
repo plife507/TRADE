@@ -634,8 +634,8 @@ def _write_results_summary(ctx: _RunContext) -> ResultsSummary:
         equity_hash = compute_equity_hash(ctx.engine_result.equity_curve)
     run_hash = compute_run_hash(trades_hash, equity_hash, ctx.play_hash)
 
-    # Resolve idea path
-    resolved_idea_path = (
+    # Resolve play path
+    resolved_play_path = (
         str(ctx.config.plays_dir / f"{ctx.play.id}.yml")
         if ctx.config.plays_dir
         else f"plays/{ctx.play.id}.yml"
@@ -658,7 +658,7 @@ def _write_results_summary(ctx: _RunContext) -> ResultsSummary:
         run_duration_seconds=run_duration,
         play_hash=ctx.play_hash,
         pipeline_version=PIPELINE_VERSION,
-        resolved_idea_path=resolved_idea_path,
+        resolved_play_path=resolved_play_path,
         trades_hash=trades_hash,
         equity_hash=equity_hash,
         run_hash=run_hash,
@@ -693,8 +693,8 @@ def _write_pipeline_signature(ctx: _RunContext) -> None:
         create_pipeline_signature,
     )
 
-    # Resolve idea path
-    resolved_idea_path = (
+    # Resolve play path
+    resolved_play_path = (
         str(ctx.config.plays_dir / f"{ctx.play.id}.yml")
         if ctx.config.plays_dir
         else f"plays/{ctx.play.id}.yml"
@@ -713,7 +713,7 @@ def _write_pipeline_signature(ctx: _RunContext) -> None:
         run_id=ctx.run_id,
         play=ctx.play,
         play_hash=ctx.play_hash,
-        resolved_path=resolved_idea_path,
+        resolved_path=resolved_play_path,
         declared_keys=declared_keys,
         computed_keys=computed_keys,
     )

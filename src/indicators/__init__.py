@@ -82,8 +82,6 @@ from src.backtest.features.feature_frame_builder import (
     FeatureArrays,
     IndicatorCompute,
     get_compute,
-    build_features_from_play,
-    PlayFeatures,
 )
 
 # =============================================================================
@@ -191,8 +189,6 @@ __all__ = [
     "FeatureArrays",
     "IndicatorCompute",
     "get_compute",
-    "build_features_from_play",
-    "PlayFeatures",
     # Metadata
     "IndicatorMetadata",
     "canonicalize_params",

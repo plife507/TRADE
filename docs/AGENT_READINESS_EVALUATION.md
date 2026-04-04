@@ -32,12 +32,14 @@ making them parseable by agents without screen-scraping.
 
 ## Dimension 1: CLI Surface Coverage (85% Ready)
 
-### Wired Subcommand Groups (11 total)
+### Wired Subcommand Groups (13 total)
 
 | Group | Subcommands | File |
 |-------|-------------|------|
 | **backtest** | run, preflight, indicators, data-fix, list, normalize, normalize-batch | `subcommands/backtest.py` |
 | **play** | run, status, stop, watch, logs, pause, resume | `subcommands/play.py` |
+| **shadow** | run, add, remove, list, stats, daemon | `subcommands/shadow.py` |
+| **portfolio** | snapshot, wallet, risk, instruments, resolve, subs, deploy, stop, plays, recall-all, collateral, toggle-collateral | `subcommands/portfolio.py` |
 | **validate** | quick, standard, full, real, module, pre-live, exchange | inline in `trade_cli.py` |
 | **debug** | math-parity, snapshot-plumbing, determinism, metrics | `subcommands/debug.py` |
 | **account** | balance, exposure, info, history, pnl, transactions, collateral | `subcommands/trading.py` |
@@ -48,7 +50,7 @@ making them parseable by agents without screen-scraping.
 | **market** | price, ohlcv, funding, oi, orderbook, instruments | `subcommands/market.py` |
 | **health** | check, connection, rate-limit, ws, environment | `subcommands/health.py` |
 
-**50+ tool functions wired** via P13 (6 phases, completed 2026-02-22).
+**72 handler functions wired** across 13 groups. 124 exported tool functions. M8 (UTA Portfolio) and M9 (Shadow Unification) complete.
 
 ### What an Agent Can Do Today
 
@@ -63,7 +65,7 @@ making them parseable by agents without screen-scraping.
 
 ### Gap
 
-~34 tool functions (of 103 total) remain unwired (no CLI subcommand). Most are niche
+Some tool functions (of 124 total) remain unwired (no CLI subcommand). Most are niche
 (forge audits, stress tests, some position config edge cases). The critical trading
 loop is fully covered. Interactive menus were removed — all access is via headless
 subcommands with `--json` output.
@@ -218,7 +220,7 @@ python trade_cli.py play stop --all --force
 
 | Dimension | Score | Tests | Notes |
 |-----------|-------|-------|-------|
-| CLI surface | **90%** | 15/15 pass | All 11 subcommand groups return valid JSON |
+| CLI surface | **90%** | 15/15 pass | All 13 subcommand groups return valid JSON |
 | Instance safety | **95%** | 8/8 pass | Cross-process locking, PID kill, cooldown, headless — all solid |
 | Live trading safety | **80%** | 8/8 features pass | GAP-2 fixed (REST fallback). 3 minor items remain. |
 | Agent workflows | **90%** | 6/6 pass | headless, watch --json, stop --all/--force, logs — all working |

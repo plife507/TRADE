@@ -7,7 +7,7 @@ No interactive mode — all access via `python trade_cli.py <command> [subcomman
 
 ```
 trade_cli.py                      Entry point: argparse + dispatch
-  src/cli/argparser.py            Argument definitions for 13 command groups
+  src/cli/argparser.py            Argument definitions for all command groups
   src/cli/subcommands/            Handler functions (args -> tool -> format)
     play.py                       backtest/live modes
     portfolio.py                  UTA portfolio (22 tools)
@@ -18,7 +18,7 @@ trade_cli.py                      Entry point: argparse + dispatch
   src/cli/validate_timestamps.py  G17 timestamp gate (503 checks)
   src/cli/dashboard/              Rich TUI for live play monitoring
   src/cli/smoke_tests/            Smoke test infrastructure
-  src/tools/                      82+ registered tools (ToolResult envelope)
+  src/tools/                      124 exported tools (ToolResult envelope)
     portfolio_tools.py            22 UTA portfolio tools
 ```
 
@@ -258,8 +258,8 @@ class ToolResult:
 | File | Lines | Purpose |
 |------|-------|---------|
 | `trade_cli.py` | 337 | Entry point: argparse + if-elif dispatch |
-| `src/cli/argparser.py` | 652 | Argument definitions for 11 groups |
-| `src/cli/subcommands/` | 2,978 | 63 handler functions across 8 files |
+| `src/cli/argparser.py` | -- | Argument definitions for 13 groups |
+| `src/cli/subcommands/` | -- | 72 handler functions across 10 files |
 | `src/cli/utils.py` | 6 | `console = Console()` singleton |
 | `src/cli/validate.py` | 1,864 | Validation suite engine |
 | `src/cli/dashboard/` | ~2,500 | Rich TUI for live play monitoring |

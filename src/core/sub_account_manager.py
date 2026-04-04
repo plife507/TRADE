@@ -24,6 +24,8 @@ import uuid
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, Any
 
+from pybit.exceptions import InvalidRequestError
+
 from ..config.constants import PROJECT_ROOT
 from ..utils.datetime_utils import utc_now
 from ..utils.logger import get_module_logger
@@ -32,6 +34,9 @@ if TYPE_CHECKING:
     from ..exchanges.bybit_client import BybitClient
 
 logger = get_module_logger(__name__)
+
+# Bybit hard limit: max 20 sub-accounts per master UID
+MAX_SUB_ACCOUNTS = 20
 
 # State persistence path (inside data/ which is gitignored)
 STATE_DIR = PROJECT_ROOT / "data" / "runtime"
@@ -166,12 +171,36 @@ class SubAccountManager:
         if not any(c.isalpha() for c in username) or not any(c.isdigit() for c in username):
             raise ValueError(f"Username must include both letters and digits: {username!r}")
 
+        # Bug 3: Pre-check max 20 sub-account limit (Bybit hard limit)
+        with self._lock:
+            active_count = sum(
+                1 for info in self._sub_accounts.values()
+                if info.status != "deleted"
+            )
+        if active_count >= MAX_SUB_ACCOUNTS:
+            raise RuntimeError(
+                f"Cannot create sub-account: already at Bybit limit of {MAX_SUB_ACCOUNTS} "
+                f"sub-accounts ({active_count} active). Delete unused subs first."
+            )
+
         # Step 1: Create sub-account
         logger.info("Creating sub-account: username=%s", username)
-        create_resp = self._main_client.session.create_sub_uid(
-            username=username,
-            memberType=1,  # Normal sub-account (always UTA)
-        )
+        try:
+            create_resp = self._main_client.session.create_sub_uid(
+                username=username,
+                memberType=1,  # Normal sub-account (always UTA)
+            )
+        except InvalidRequestError as e:
+            # Bug 2: Handle "username already exists" — find and return the existing sub
+            err_msg = str(e.message) if hasattr(e, "message") else str(e)
+            if "already exist" in err_msg.lower() or "duplicate" in err_msg.lower():
+                logger.warning(
+                    "Username %r already exists on exchange, looking up existing sub",
+                    username,
+                )
+                return self._find_existing_sub(username)
+            raise RuntimeError(f"Sub-account creation failed: {err_msg}") from e
+
         create_result = self._main_client._extract_result(create_resp)
 
         uid = int(create_result.get("uid", 0))
@@ -229,6 +258,50 @@ class SubAccountManager:
 
         self.save_state()
         return info
+
+    def _find_existing_sub(self, username: str) -> SubAccountInfo:
+        """
+        Find an existing sub-account by username after a 'username already exists' error.
+
+        Checks local state first, then syncs from exchange. If found but missing
+        API keys, raises with a helpful message.
+
+        Raises:
+            RuntimeError: If the sub cannot be found or has no API keys.
+        """
+        # Check local state first
+        with self._lock:
+            for info in self._sub_accounts.values():
+                if info.username == username and info.status != "deleted":
+                    logger.info(
+                        "Found existing sub uid=%d for username=%s in local state",
+                        info.uid, username,
+                    )
+                    return info
+
+        # Not in local state — sync from exchange and try again
+        self.sync_from_exchange()
+
+        with self._lock:
+            for info in self._sub_accounts.values():
+                if info.username == username and info.status != "deleted":
+                    if not info.api_key:
+                        raise RuntimeError(
+                            f"Sub-account username={username!r} (uid={info.uid}) exists on "
+                            f"exchange but has no API keys in local state. "
+                            f"Generate keys manually or delete and re-create."
+                        )
+                    logger.info(
+                        "Found existing sub uid=%d for username=%s via exchange sync",
+                        info.uid, username,
+                    )
+                    return info
+
+        raise RuntimeError(
+            f"Sub-account username={username!r} reportedly exists on exchange "
+            f"but could not be found via API. It may have been deleted previously "
+            f"(Bybit reserves deleted usernames). Choose a different username."
+        )
 
     # ── Client Management ───────────────────────────────────
 
@@ -316,14 +389,19 @@ class SubAccountManager:
         if status not in ("SUCCESS", "PENDING"):
             raise RuntimeError(f"Transfer failed: status={status}, result={result}")
 
-        # Only update accounting on confirmed success (not PENDING)
-        if status == "SUCCESS":
-            with self._lock:
-                info.funded_coin = coin.upper()
-                info.funded_amount += amount
-            self.save_state()
-        else:
-            logger.warning("Transfer PENDING for sub uid=%d — accounting deferred until confirmed", uid)
+        # Optimistic accounting — update on both SUCCESS and PENDING.
+        # If PENDING transfer fails, manual reconciliation needed via sync_from_exchange().
+        # Not saving on PENDING risks losing track of the transfer entirely if the process crashes.
+        with self._lock:
+            info.funded_coin = coin.upper()
+            info.funded_amount += amount
+        self.save_state()
+        if status == "PENDING":
+            logger.warning(
+                "Transfer PENDING for sub uid=%d — optimistic accounting applied, "
+                "reconcile via sync_from_exchange() if transfer fails",
+                uid,
+            )
 
         logger.info("Transfer %s: %s %s to sub uid=%d", status, amount, coin, uid)
         return transfer_id
@@ -367,12 +445,17 @@ class SubAccountManager:
         if status not in ("SUCCESS", "PENDING"):
             raise RuntimeError(f"Withdrawal failed: status={status}, result={result}")
 
-        if status == "SUCCESS":
-            with self._lock:
-                info.withdrawn_amount += amount
-            self.save_state()
-        else:
-            logger.warning("Withdrawal PENDING for sub uid=%d — accounting deferred", uid)
+        # Optimistic accounting — update on both SUCCESS and PENDING.
+        # If PENDING transfer fails, manual reconciliation needed via sync_from_exchange().
+        with self._lock:
+            info.withdrawn_amount += amount
+        self.save_state()
+        if status == "PENDING":
+            logger.warning(
+                "Withdrawal PENDING for sub uid=%d — optimistic accounting applied, "
+                "reconcile via sync_from_exchange() if transfer fails",
+                uid,
+            )
 
         logger.info("Withdrawal %s: %s %s from sub uid=%d", status, amount, coin, uid)
         return transfer_id
@@ -591,8 +674,8 @@ class SubAccountManager:
         tmp_path.replace(STATE_FILE)
         try:
             os.chmod(STATE_FILE, 0o600)
-        except OSError:
-            pass  # Windows/WSL may not support chmod on /mnt/c
+        except OSError as e:
+            logger.warning("Could not set 0o600 on state file: %s", e)
 
         logger.debug("Sub-account state saved: %d accounts", len(data["sub_accounts"]))
 

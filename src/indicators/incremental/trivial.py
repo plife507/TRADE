@@ -5,8 +5,6 @@ Simple indicators that require minimal state: OHLC4, Midprice, ROC,
 MOM, OBV, and NATR.
 """
 
-from __future__ import annotations
-
 from collections import deque
 from dataclasses import dataclass, field
 from typing import Any

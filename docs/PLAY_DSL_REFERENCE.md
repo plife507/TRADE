@@ -1,10 +1,10 @@
-# Play DSL Reference
+# Play DSL Reference (FROZEN — use modular docs instead)
 
-> Single source of truth for Play YAML syntax. DSL semantics frozen 2026-01-08.
-> Validated by 170 synthetic + 60 real-data plays.
+> **DEPRECATED**: This monolithic file is frozen and may be stale.
+> Use the modular playbook at `docs/dsl/` instead — it has `backtest:`, `deploy:` sections
+> and is kept in sync with the codebase. See `docs/dsl/README.md` for the index.
 >
-> **For agents:** Use the modular playbook at `docs/dsl/` instead — token-efficient,
-> load only what you need. See `docs/dsl/README.md` for the index.
+> DSL semantics frozen 2026-01-08. Validated by 229 synthetic + 61 real-data plays.
 
 ## 1. Play Skeleton
 
@@ -784,7 +784,7 @@ For short strategies, use the corresponding down/bear patterns.
 ```bash
 python trade_cli.py validate quick         # ~30s, 5 core plays
 python trade_cli.py validate standard      # ~2min, core + audits
-python trade_cli.py validate full          # ~10min, 170-play suite
+python trade_cli.py validate full          # ~10min, 229-play suite
 python trade_cli.py validate pre-live --play X  # Real-data check
 ```
 

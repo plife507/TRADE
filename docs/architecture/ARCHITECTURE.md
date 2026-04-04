@@ -87,9 +87,9 @@ KNOWLEDGE ──> AGENT BUILDS PLAYS ──> BACKTEST (iterate until profitable)
 |                                                                        |
 |  +----------------------------------------------------------------+   |
 |  | M0: FOUNDATION (BUILT)                                         |   |
-|  | PlayEngine, 44 indicators, 7 structures, DSL, SimExchange,    |   |
-|  | CLI (50+ cmds), validation (17 gates), hash tracing,          |   |
-|  | structlog, timestamps, synthetic data (34 patterns)            |   |
+|  | PlayEngine, 47 indicators, 13 structures, DSL, SimExchange,   |   |
+|  | CLI (72 handlers, 13 groups), validation (18 gates),           |   |
+|  | hash tracing, structlog, timestamps, synthetic data (38 patterns)|  |
 |  +----------------------------------------------------------------+   |
 +------------------------------------------------------------------------+
 ```
@@ -104,17 +104,17 @@ The engine, DSL, indicators, and infrastructure that everything else builds on.
 
 | Component | Status | Detail |
 |-----------|--------|--------|
-| PlayEngine | Production-ready | Unified backtest/demo/live, adapter pattern, 16-phase gated runner |
-| 44 Indicators | Production-ready | All incremental O(1), registry-based, warmup-aware |
-| 7 Structure Detectors | Production-ready | Swing, trend, zone, fib, derived_zone, rolling_window, market_structure |
-| Play DSL | Frozen (2026-01-08) | 33+ patterns, full operator set. See `PLAY_DSL_REFERENCE.md` |
+| PlayEngine | Production-ready | Unified backtest/live, adapter pattern, 16-phase gated runner |
+| 47 Indicators | Production-ready | All incremental O(1), registry-based, warmup-aware |
+| 13 Structure Detectors | Production-ready | 7 core (swing, trend, zone, fib, derived_zone, rolling_window, market_structure) + 6 ICT (breaker_block, displacement, fair_value_gap, liquidity_zones, order_block, premium_discount) |
+| Play DSL | Frozen (2026-01-08) | 38 patterns, full operator set. See `PLAY_DSL_REFERENCE.md` |
 | Simulated Exchange | Production-ready | Fills, ledger, liquidation, funding, tiered margins |
-| CLI | 85% complete | 64 handlers, 11 subcommand groups, JSON output, headless mode |
-| Validation | Production-ready | 17 gates (G1-G17), 170 synthetic + 60 real-data plays |
+| CLI | 85% complete | 72 handlers, 13 subcommand groups, JSON output, headless mode |
+| Validation | Production-ready | 18 gates (G1-G17 + G4b), 229 synthetic + 61 real-data plays |
 | Logging | Production-ready | structlog, JSON, context binding, rotating files (100MB x 7) |
 | Timestamps | Enforced | UTC-naive everywhere, G17 gate (490 checks, 23 categories) |
 | Hash Tracing | Production-ready | play -> input -> trades -> equity -> run |
-| Synthetic Data | Production-ready | 34 patterns, deterministic seeding, multi-TF support |
+| Synthetic Data | Production-ready | 38 patterns, deterministic seeding, multi-TF support |
 
 ### M1: Knowledge Store (NOT STARTED)
 
@@ -145,7 +145,7 @@ Runs plays against historical data and scores results.
 - **Status**: Production-ready, minor polish needed (T1 warmup parity, T2 structure rethink)
 - **Key for M2**: Must expose clear pass/fail criteria for agent iteration
 
-### M4: Shadow Exchange — The Training Ground (SKELETON EXISTS)
+### M4: Shadow Exchange — The Training Ground (PHASES 1-4 COMPLETE)
 
 Always-on paper trading on VPS. Runs proven plays in real market conditions. **Market Intelligence (M6) trains here.**
 
@@ -156,10 +156,10 @@ Always-on paper trading on VPS. Runs proven plays in real market conditions. **M
   - Track P&L per play, per market condition
   - Feed performance data to M6 for training
   - Graduate plays WITH context ("this play + trending BTC + low funding")
-- **Existing**: LiveRunner (async event loop), demo mode, WebSocket integration
-- **Needed**: Multi-play orchestration, performance database, VPS deployment, M6 integration
+- **Built**: ShadowEngine, FeedHub, Orchestrator, PerformanceDB, Daemon, multi-play parallel execution, live WS data
+- **Remaining**: Phase 5 (ShadowGraduator — promotion pipeline), Phase 6 (M6 integration hooks)
 
-### M5: Live Trade Manager (PARTIALLY BUILT)
+### M5/M8: Live Trade Manager + UTA Portfolio (M8 COMPLETE)
 
 Promotes shadow-proven plays to real money on isolated Bybit sub-accounts.
 
@@ -170,8 +170,9 @@ Promotes shadow-proven plays to real money on isolated Bybit sub-accounts.
   - Risk controls (max drawdown, daily loss, position limits)
   - Graduated autonomy: pause+alert first, auto-rotate as trust builds
   - Trust scoring (track record over time earns more autonomy)
-- **Existing**: ExchangeManager, safety guards (DCP, staleness, panic, price deviation)
-- **Needed**: Sub-account management, trust scoring system, promotion pipeline, auto-rotation
+- **Built (M8)**: PortfolioManager, SubAccountManager, InstrumentRegistry (675 instruments), PlayDeployer, 22 portfolio tools (all ToolResult), full sub-account lifecycle, parallel deployment
+- **Built**: ExchangeManager, safety guards (DCP, staleness, panic, price deviation)
+- **Remaining**: Trust scoring system, M4 promotion pipeline (ShadowGraduator), auto-rotation
 
 ### M6: Market Intelligence (NOT STARTED — trains in M4)
 
@@ -228,7 +229,7 @@ M0 (done) --> M3 (polish T1/T2) --> M2 (forge + GE iteration loop)
 5. **Hash Tracing** -- play_hash -> input_hash -> trades_hash -> equity_hash -> run_hash for full reproducibility.
 6. **YAML-Driven** -- All strategy config in Play YAML, no hardcoded logic.
 7. **UTC-Naive Timestamps** -- All internal datetimes are UTC-naive, enforced by G17.
-8. **Incremental O(1)** -- All 44 indicators update in constant time per bar.
+8. **Incremental O(1)** -- All 47 indicators update in constant time per bar.
 9. **Deterministic** -- `sorted(set)` everywhere, no PYTHONHASHSEED dependency.
 10. **Graduated Autonomy** -- System starts supervised, earns trust through track record.
 11. **Shadow = Training Ground** -- Market intelligence learns from shadow, not from theory.
@@ -242,14 +243,14 @@ M0 (done) --> M3 (polish T1/T2) --> M2 (forge + GE iteration loop)
 | Engine | `src/engine/` | PlayEngine, SubLoop, adapters, sizing, journal | Unified bar processing |
 | Sim | `src/backtest/sim/` | exchange, ledger, liquidation, fills, funding | Simulated exchange |
 | Backtest | `src/backtest/` | runner, factory, metrics, preflight, artifacts | Backtest infrastructure |
-| DSL/Play | `src/backtest/rules/`, `src/play/` | parser, evaluator, strategy blocks, resolve | Strategy language |
-| Indicators | `src/indicators/` | 44 incremental indicators | Technical analysis |
-| Structures | `src/structures/` | 7 detectors (swing, trend, zone, fib, etc.) | Market structure |
+| DSL/Play | `src/backtest/rules/`, `src/backtest/play/` | parser, evaluator, strategy blocks, resolve | Strategy language |
+| Indicators | `src/indicators/` | 47 incremental indicators | Technical analysis |
+| Structures | `src/structures/` | 13 detectors (7 core + 6 ICT) | Market structure |
 | Data | `src/data/` | DuckDB store, historical sync | Historical data |
 | Exchange | `src/core/` | safety, positions, orders, risk, realtime state | Live trading |
 | CLI | `src/cli/`, `trade_cli.py` | validate, backtest, debug, play commands | User interface |
-| Tools | `src/tools/` | 103 tool functions, 64 handlers | Agent/orchestrator API |
-| Forge | `src/forge/` | synthetic data (34 patterns), audits, coverage | Testing infrastructure |
+| Tools | `src/tools/` | 124 exported tool functions, 72 handlers | Agent/orchestrator API |
+| Forge | `src/forge/` | synthetic data (38 patterns), audits, coverage | Testing infrastructure |
 | Config | `src/config/` | defaults.yml, constants, config | System defaults |
 | Utils | `src/utils/` | logger, debug, datetime_utils, hashes | Shared utilities |
 
@@ -331,9 +332,9 @@ Play YAML actions -> PARSE (dsl_parser.py) -> Block/Case/AllExpr tree
 | Document | Location | Purpose |
 |----------|----------|---------|
 | **Project TODO** | `docs/TODO.md` | Active work tracker |
-| **Market Structure Features** | `docs/MARKET_STRUCTURE_FEATURES.md` | Implementation plan for new detectors (FVG, OB, etc.) |
+| **Market Structure Features** | `docs/MARKET_STRUCTURE_FEATURES.md` | Reference for ICT structure detectors (all implemented) |
 | **Play DSL Reference** | `docs/PLAY_DSL_REFERENCE.md` | DSL truth (frozen 2026-01-08) |
-| **Synthetic Data Reference** | `docs/SYNTHETIC_DATA_REFERENCE.md` | 34 data patterns |
+| **Synthetic Data Reference** | `docs/SYNTHETIC_DATA_REFERENCE.md` | 38 data patterns |
 | **Validation Best Practices** | `docs/VALIDATION_BEST_PRACTICES.md` | Validation guide |
 | **CLI Quick Reference** | `docs/CLI_QUICK_REFERENCE.md` | CLI patterns |
 | **CLI Data Guide** | `docs/CLI_DATA_GUIDE.md` | Data flow guide |

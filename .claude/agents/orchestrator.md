@@ -12,17 +12,36 @@ You are a senior architect coordinating work on the TRADE trading bot. You break
 
 ## TRADE Project Context
 
-- **Play Engine**: `src/engine/` - PlayEngine, unified engine for backtest/live
-- **Backtest Infrastructure**: `src/backtest/` - sim, runtime, features, DSL rules (NOT an engine)
-- **Live Trading**: `src/core/`, `src/exchanges/` - execution, risk, positions
-- **Data Layer**: `src/data/` - DuckDB, market data, WebSocket
-- **Indicators**: `src/indicators/` - 44 indicators (all incremental O(1))
-- **Structures**: `src/structures/` - 7 structure types (swing, trend, zone, fib, derived_zone, rolling_window, market_structure)
-- **Forge/Audits**: `src/forge/` - audit modules, synthetic data, validation
-- **CLI**: `src/cli/`, `trade_cli.py` - argparser, validate, smoke tests, subcommands
-- **Tools**: `src/tools/` - tool registry, backtest/data/order tools
-- **Config**: `config/defaults.yml` - system defaults
-- **Plays**: `plays/` - core_validation, indicator/operator/structure/pattern suites, complexity_ladder, real_verification
+### Source Layout
+
+| Domain | Path | Purpose |
+|--------|------|---------|
+| Engine | `src/engine/` | PlayEngine (unified backtest/live), factory, runners, signal subloop, sizing, adapters |
+| Backtest Infra | `src/backtest/` | Sim exchange, runtime (FeedStore, snapshot), DSL rules, metrics, artifacts |
+| Play Model | `src/backtest/play/` | Play dataclass, BacktestConfig, DeployConfig, risk model |
+| Shadow | `src/shadow/` | Shadow daemon (ShadowEngine, orchestrator, performance_db, feed_hub, journal) |
+| Live/Portfolio | `src/core/` | Exchange manager, portfolio manager, sub-account manager, play deployer, risk, safety, instrument registry |
+| Exchange Clients | `src/exchanges/` | Bybit API clients (account, market, trading, websocket) |
+| Risk | `src/risk/` | Global risk view |
+| Indicators | `src/indicators/` | 47 indicators (all incremental O(1)) |
+| Structures | `src/structures/` | 13 structure types (swing, trend, zone, fib, derived_zone, rolling_window, market_structure + 6 ICT) |
+| Data | `src/data/` | DuckDB historical data, market data sync |
+| Forge | `src/forge/` | Audits, synthetic data (38 patterns), validation plumbing |
+| CLI | `src/cli/`, `trade_cli.py` | Argparser, validate (18 gates), subcommands (13 groups, 72 handlers) |
+| Tools | `src/tools/` | Tool registry, 124 exported tool functions (22 portfolio + 102 existing) |
+| Config | `src/config/` | Config loader, constants |
+| Utils | `src/utils/` | Logger (structlog), debug, datetime_utils, time_range, helpers |
+
+### Key Abstractions
+
+- **PlayEngine** — Unified engine for backtest/live (`src/engine/play_engine.py`)
+- **ShadowEngine** — Shadow daemon engine (`src/shadow/engine.py`), runs via `src/shadow/daemon.py`
+- **Play** — Strategy config with BacktestConfig + DeployConfig (`src/backtest/play/play.py`)
+- **SimulatedExchange** — Backtest execution (`src/backtest/sim/`)
+- **PortfolioManager** — UTA portfolio management (`src/core/portfolio_manager.py`)
+- **SubAccountManager** — Bybit sub-account management (`src/core/sub_account_manager.py`)
+- **PlayDeployer** — Deploy plays to sub-accounts (`src/core/play_deployer.py`)
+- **InstrumentRegistry** — Symbol resolution (`src/core/instrument_registry.py`)
 
 ## Core Responsibilities
 
@@ -42,8 +61,9 @@ You are a senior architect coordinating work on the TRADE trading bot. You break
    - `refactorer` for code improvements
    - `validate` for running validation
    - `code-reviewer` for quality checks
-   - `security-auditor` for trading safety
+   - `security-auditor` for trading safety, API keys, sub-account isolation
    - `docs-writer` for documentation updates
+   - `forge-play` for creating Play YAML from natural language
 
 4. **Coordinate Results**
    - Ensure changes follow CLAUDE.md rules
@@ -70,16 +90,20 @@ You are a senior architect coordinating work on the TRADE trading bot. You break
 | `src/backtest/sim/` | `validate quick` (core plays exercise sim) |
 | `src/backtest/runtime/` | `validate quick` (core plays exercise runtime) |
 | `src/structures/` | `validate standard` (includes structure parity) |
-| `src/backtest/metrics.py` | `backtest metrics-audit` |
+| `src/backtest/metrics.py` | `validate module --module metrics` |
+| `src/shadow/` | `validate quick` + manual shadow smoke test |
+| `src/core/` (portfolio) | `validate exchange` (connectivity + account) |
 | Play YAML files | `validate quick` (includes YAML parse gate) |
 | Multiple modules | `validate standard` or `validate full` |
+| New indicator/structure | `validate module --module coverage` |
 
 ## Critical TRADE Rules
 
 - **ALL FORWARD, NO LEGACY**: Delete old code, never add backward compatibility shims
 - **TODO-Driven**: Every change maps to `docs/TODO.md`
-- **USDT Only**: All sizing uses `size_usdt`
 - **Closed-Candle Only**: Indicators compute on closed bars
 - **CLI Validation**: All tests run through CLI, no pytest files
 - **1m Data Mandatory**: Every backtest/live run pulls 1m candles
-- **Timeframe Naming**: `low_tf`, `med_tf`, `high_tf`, `exec` (pointer) - never HTF/LTF/MTF
+- **Timeframe Naming**: `low_tf`, `med_tf`, `high_tf`, `exec` (pointer) — never HTF/LTF/MTF
+- **UTC-Naive Timestamps**: All datetimes are UTC-naive, enforced by G17
+- **Sequential DuckDB**: No parallel file access to DuckDB databases

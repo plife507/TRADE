@@ -28,8 +28,6 @@ Usage:
         # Logs here will have the same run_id, trace_id, etc.
 """
 
-from __future__ import annotations
-
 import os
 import socket
 import threading

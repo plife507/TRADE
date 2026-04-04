@@ -16,23 +16,33 @@ You are a refactoring expert for the TRADE trading bot. You improve code structu
 
 | Module | Path | Purpose |
 |--------|------|---------|
-| Play Engine | `src/engine/` | Unified engine (PlayEngine) for backtest/live |
-| Backtest Infra | `src/backtest/` | Sim, runtime, features, DSL rules |
-| Live Trading | `src/core/` | Exchange execution, risk, positions |
-| Indicators | `src/indicators/` | 44 incremental O(1) indicators |
-| Structures | `src/structures/` | 7 structure types with detectors |
-| Data | `src/data/` | DuckDB, market data |
-| Forge | `src/forge/` | Audits, synthetic data, validation |
-| CLI | `src/cli/`, `trade_cli.py` | Argparser, validate, smoke tests |
-| Tools | `src/tools/` | Tool registry, API surface |
+| Engine | `src/engine/` | Unified engine (PlayEngine) for backtest/live, factory, runners, adapters |
+| Backtest Infra | `src/backtest/` | Sim exchange, runtime (FeedStore, snapshot), DSL rules, metrics, artifacts |
+| Play Model | `src/backtest/play/` | Play dataclass, BacktestConfig, DeployConfig, risk model |
+| Shadow | `src/shadow/` | Shadow daemon (ShadowEngine, orchestrator, performance_db, feed_hub) |
+| Portfolio/Live | `src/core/` | Exchange manager, portfolio manager, sub-accounts, play deployer, safety, risk |
+| Exchange Clients | `src/exchanges/` | Bybit API clients (account, market, trading, websocket) |
+| Risk | `src/risk/` | Global risk view |
+| Indicators | `src/indicators/` | 47 incremental O(1) indicators |
+| Structures | `src/structures/` | 13 structure types with detectors |
+| Data | `src/data/` | DuckDB, market data sync |
+| Forge | `src/forge/` | Audits, synthetic data, validation plumbing |
+| CLI | `src/cli/`, `trade_cli.py` | Argparser, validate (18 gates), subcommands |
+| Tools | `src/tools/` | Tool registry, 124 exported tool functions |
+| Config | `src/config/` | Config loader, constants |
+| Utils | `src/utils/` | Logger (structlog), debug, datetime_utils, helpers |
 
 ### Key Abstractions
-- `Play` - Strategy configuration (DSL v3.0.0)
-- `PlayEngine` - Unified engine at `src/engine/play_engine.py`
-- `RuntimeSnapshotView` - O(1) read-only data view
-- `SimulatedExchange` - Backtest execution
-- `FeedStore` - Time-series data container
-- `SyntheticCandlesProvider` - Drop-in for DuckDB in tests
+- `Play` — Strategy configuration (DSL v3.0.0) with BacktestConfig + DeployConfig
+- `PlayEngine` — Unified engine at `src/engine/play_engine.py`
+- `ShadowEngine` — Shadow paper trading at `src/shadow/engine.py`
+- `RuntimeSnapshotView` — O(1) read-only data view
+- `SimulatedExchange` — Backtest execution
+- `FeedStore` — Time-series data container
+- `PortfolioManager` — UTA portfolio management
+- `SubAccountManager` — Bybit sub-account isolation
+- `PlayDeployer` — Deploy plays to sub-accounts
+- `InstrumentRegistry` — Symbol resolution for 675+ instruments
 
 ## Refactoring Process
 
@@ -51,6 +61,8 @@ python trade_cli.py validate quick
 - Legacy compatibility shims (remove them!)
 - Simulator-only code in shared modules
 - Live-only assumptions in shared utilities
+- Business logic in exchange client layer (`src/exchanges/`) — move to `src/core/`
+- Business logic in CLI handlers (`src/cli/`) — move to `src/tools/`
 
 ### Phase 3: Apply Refactorings
 
@@ -99,4 +111,6 @@ python trade_cli.py validate quick - PASS
 - **TODO-Driven**: Update docs/TODO.md before and after refactoring
 - **No pytest**: Validate through CLI commands only
 - **Domain Isolation**: Don't leak simulator logic into live trading paths
-- **Timeframe Naming**: low_tf, med_tf, high_tf, exec - never HTF/LTF/MTF
+- **Timeframe Naming**: low_tf, med_tf, high_tf, exec — never HTF/LTF/MTF
+- **UTC-Naive Timestamps**: All datetimes UTC-naive, enforced by G17
+- **Sequential DuckDB**: No parallel file access to DuckDB databases

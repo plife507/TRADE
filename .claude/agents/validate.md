@@ -65,8 +65,8 @@ All validation runs have timeout protection:
 
 ## What Each Tier Tests
 
-### Quick (G1-G4b) -- staged parallel
-- Stage 0: G1 YAML parse (5 core plays)
+### Quick (G1-G4b + G16-G17) -- staged parallel
+- Stage 0: G1 YAML parse (5 core plays) + G16 logging lint + G17 timestamp correctness
 - Stage 1: G2 registry contract + G3 incremental parity (parallel)
 - Stage 2: G4 core plays + G4b risk plays (parallel)
 
@@ -102,15 +102,17 @@ Run any module independently with `validate module --module <name>`:
 | `risk` | G4b | 9 risk plays |
 | `audits` | G2 + G3 | registry + parity audits |
 | `operators` | G8 | 25 operator plays |
-| `structures` | G9 | 14 structure plays |
+| `structures` | G9 | 26 structure plays |
 | `complexity` | G10 | 13 complexity plays |
-| `indicators` | G12 | 84 indicator plays |
-| `patterns` | G13 | 34 pattern plays |
+| `indicators` | G12 | 88 indicator plays |
+| `patterns` | G13 | 38 pattern plays |
 | `parity` | G5 + G6 | structure + rollup parity |
 | `sim` | G7 | sim order smoke |
 | `metrics` | G11 | financial math audit |
 | `determinism` | G14 | 5 plays x2 runs |
 | `coverage` | G15 | indicator + structure gap detection |
+| `logging` | G16 | logging lint (static scan) |
+| `timestamps` | G17 | timestamp correctness (490 checks) |
 | `real-accumulation` | RD1 | 15 accumulation plays |
 | `real-markup` | RD2 | 16 markup plays |
 | `real-distribution` | RD3 | 15 distribution plays |
@@ -220,10 +222,10 @@ Every backtest run produces artifacts in its hash-based folder:
 |-----------|-------|---------|
 | `plays/validation/core/` | 5 | Core validation (quick tier) |
 | `plays/validation/risk/` | 9+ | Risk stop validation (quick tier) |
-| `plays/validation/indicators/` | 84 | All indicator coverage |
+| `plays/validation/indicators/` | 88 | All indicator coverage |
 | `plays/validation/operators/` | 25 | DSL operator coverage |
-| `plays/validation/structures/` | 14 | Structure type coverage |
-| `plays/validation/patterns/` | 34 | Synthetic pattern coverage |
+| `plays/validation/structures/` | 26 | Structure type coverage |
+| `plays/validation/patterns/` | 38 | Synthetic pattern coverage |
 | `plays/validation/complexity/` | 13 | Increasing complexity |
 | `plays/validation/real_data/` | 61 | Real-data Wyckoff verification |
 

@@ -25,8 +25,9 @@ Registry Consolidation (2025-12-31):
 """
 
 from dataclasses import dataclass, field
-from enum import Enum
 from typing import Any
+
+from ..feature_registry import InputSource
 
 
 def is_multi_output(indicator_type: str) -> bool:
@@ -59,25 +60,6 @@ def get_output_names(indicator_type: str) -> tuple[str, ...]:
     """
     from ..indicator_registry import get_registry
     return get_registry().get_output_suffixes(indicator_type.lower())
-
-
-class InputSource(str, Enum):
-    """
-    Data sources for indicator computation.
-    
-    OHLCV: Use the named price column directly
-    INDICATOR: Use another indicator's output as input (for chained indicators)
-    """
-    OPEN = "open"
-    HIGH = "high"
-    LOW = "low"
-    CLOSE = "close"
-    VOLUME = "volume"
-    # HLC3, OHLC4 computed from multiple columns
-    HLC3 = "hlc3"      # (high + low + close) / 3
-    OHLC4 = "ohlc4"    # (open + high + low + close) / 4
-    # Reference another indicator output
-    INDICATOR = "indicator"
 
 
 @dataclass(frozen=True)

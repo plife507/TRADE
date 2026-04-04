@@ -13,6 +13,7 @@ from .data_specs import SPECS as DATA_SPECS, get_imports as get_data_imports
 from .system_specs import SPECS as SYSTEM_SPECS, get_imports as get_system_imports
 from .backtest_specs import SPECS as BACKTEST_SPECS, get_imports as get_backtest_imports
 from .portfolio_specs import SPECS as PORTFOLIO_SPECS, get_imports as get_portfolio_imports
+from .forge_specs import SPECS as FORGE_SPECS, get_imports as get_forge_imports
 
 ALL_SPECS = (
     ORDERS_SPECS +
@@ -22,7 +23,8 @@ ALL_SPECS = (
     DATA_SPECS +
     SYSTEM_SPECS +
     BACKTEST_SPECS +
-    PORTFOLIO_SPECS
+    PORTFOLIO_SPECS +
+    FORGE_SPECS
 )
 
 ALL_IMPORTS = {
@@ -34,6 +36,7 @@ ALL_IMPORTS = {
     "system": get_system_imports,
     "backtest": get_backtest_imports,
     "portfolio": get_portfolio_imports,
+    "forge": get_forge_imports,
 }
 
 __all__ = [
@@ -50,4 +53,5 @@ __all__ = [
     "SYSTEM_SPECS",
     "BACKTEST_SPECS",
     "PORTFOLIO_SPECS",
+    "FORGE_SPECS",
 ]

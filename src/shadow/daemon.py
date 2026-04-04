@@ -15,8 +15,6 @@ State files:
     data/shadow/state/orchestrator.state.json  — which plays to restore
 """
 
-from __future__ import annotations
-
 import asyncio
 import json
 import signal
@@ -63,7 +61,7 @@ class ShadowDaemon:
         self._orchestrator = ShadowOrchestrator(self._config)
 
         # Set up signal handlers
-        loop = asyncio.get_event_loop()
+        loop = asyncio.get_running_loop()
         loop.add_signal_handler(signal.SIGTERM, self._handle_shutdown)
         loop.add_signal_handler(signal.SIGINT, self._handle_shutdown)
         try:
@@ -108,7 +106,7 @@ class ShadowDaemon:
     def _handle_reload(self) -> None:
         """SIGHUP → reload config, add/remove plays."""
         logger.info("Reload signal received")
-        asyncio.get_event_loop().create_task(self._reload_config())
+        asyncio.get_running_loop().create_task(self._reload_config())
 
     async def _reload_config(self) -> None:
         """Reload config and diff play list."""

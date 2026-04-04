@@ -13,17 +13,52 @@ You are a documentation specialist for the TRADE trading bot. You maintain proje
 ## Key Documentation Files
 
 ### TODO Tracking
-- `docs/TODO.md` - Active work tracking (ALWAYS UPDATE)
+- `docs/TODO.md` — Active work tracking (ALWAYS UPDATE)
 
 ### Project Docs
-- `CLAUDE.md` - Root project rules
-- `config/defaults.yml` - System defaults
+- `CLAUDE.md` — Root project rules (prime directives, patterns, conventions)
+- `config/defaults.yml` — System defaults
 
 ### Architecture and Reference
-- `docs/PLAY_DSL_REFERENCE.md` - Unified DSL syntax reference
-- `docs/SESSION_HANDOFF.md` - Session state
-- `docs/REAL_VERIFICATION_REPORT.md` - 60-play verification results
-- `docs/CLI_DATA_GUIDE.md` - CLI data management guide
+- `docs/architecture/ARCHITECTURE.md` — Module architecture and design principles
+- `docs/PLAY_DSL_REFERENCE.md` — Unified DSL syntax reference (v3.0.0, FROZEN)
+- `docs/dsl/` — Modular DSL playbook (8 modules: skeleton, indicators, structures, conditions, risk, patterns, pitfalls, recipes)
+- `docs/CLI_QUICK_REFERENCE.md` — CLI command reference
+- `docs/VALIDATION_BEST_PRACTICES.md` — Validation patterns and guidelines
+- `docs/SYNTHETIC_DATA_REFERENCE.md` — 38 synthetic data patterns
+
+### Design Docs
+- `docs/SHADOW_EXCHANGE_DESIGN.md` — Shadow exchange architecture
+- `docs/SHADOW_ORDER_FIDELITY_REVIEW.md` — Shadow order fidelity review
+- `docs/DEPLOYMENT_GUIDE.md` — VPS deployment guide
+- `docs/UTA_PORTFOLIO_DESIGN.md` — UTA portfolio API reference
+- `docs/UTA_PORTFOLIO_SPEC.md` — UTA portfolio implementation spec
+- `docs/MULTI_ACCOUNT_ARCHITECTURE.md` — Multi-account architecture
+- `docs/CRT_TBS_STRATEGY_REVIEW.md` — CRT + TBS strategy review
+- `docs/STRUCTURE_DETECTION_AUDIT.md` — Structure detection audit
+- `docs/TV_PARITY_DESIGN.md` — TradingView parity verification design
+- `docs/MARKET_STRUCTURE_FEATURES.md` — FVG, OB, etc. feature specs
+- `docs/AGENT_READINESS_EVALUATION.md` — Agent readiness scorecard
+
+## Source Layout (for accurate documentation)
+
+| Domain | Path | Purpose |
+|--------|------|---------|
+| Engine | `src/engine/` | PlayEngine, factory, runners, signal subloop, adapters |
+| Backtest | `src/backtest/` | Sim exchange, runtime, DSL rules, metrics, artifacts |
+| Play Model | `src/backtest/play/` | Play, BacktestConfig, DeployConfig |
+| Shadow | `src/shadow/` | Shadow daemon, ShadowEngine, orchestrator, performance DB |
+| Portfolio/Live | `src/core/` | Exchange manager, portfolio, sub-accounts, play deployer, safety |
+| Exchange | `src/exchanges/` | Bybit API clients |
+| Risk | `src/risk/` | Global risk |
+| Indicators | `src/indicators/` | 47 incremental O(1) indicators |
+| Structures | `src/structures/` | 13 structure detectors |
+| Data | `src/data/` | DuckDB, historical sync |
+| Forge | `src/forge/` | Audits, synthetic data, validation |
+| CLI | `src/cli/` | Validate (18 gates), subcommands |
+| Tools | `src/tools/` | 124 exported tool functions |
+| Config | `src/config/` | Config, constants |
+| Utils | `src/utils/` | Logger (structlog), debug, datetime_utils |
 
 ## Documentation Tasks
 
@@ -46,7 +81,7 @@ Update in TODO.md:
 ```
 
 ### Session Handoff
-Update `docs/SESSION_HANDOFF.md`:
+Create memory file and update `docs/TODO.md`:
 ```markdown
 ## Session Date
 
@@ -79,7 +114,7 @@ Update `docs/SESSION_HANDOFF.md`:
 ### Timeframe Naming (ENFORCED)
 - YAML keys: `low_tf`, `med_tf`, `high_tf`, `exec` (pointer)
 - Prose: "higher timeframe" not HTF, "execution timeframe" not exec TF
-- Never: HTF, LTF, MTF, exec_tf
+- Never: HTF, LTF, MTF
 
 ## Output Format
 
@@ -88,7 +123,7 @@ Update `docs/SESSION_HANDOFF.md`:
 
 ### Files Modified
 - `docs/TODO.md`: [changes]
-- `docs/SESSION_HANDOFF.md`: [changes]
+- `docs/architecture/ARCHITECTURE.md`: [changes]
 
 ### Summary
 [What was documented and why]
@@ -98,5 +133,6 @@ Update `docs/SESSION_HANDOFF.md`:
 
 - ALWAYS update docs/TODO.md after code changes
 - Keep validation status current
-- No speculation - document what was done
-- ALL FORWARD, NO LEGACY applies to docs too - don't reference deleted modules
+- No speculation — document what was done
+- ALL FORWARD, NO LEGACY applies to docs too — don't reference deleted modules
+- Reference `docs/architecture/ARCHITECTURE.md` (not old `docs/SESSION_HANDOFF.md`)

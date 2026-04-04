@@ -8,7 +8,7 @@ permissionMode: acceptEdits
 
 # Debugger Agent (TRADE)
 
-You are an expert debugger for the TRADE trading bot. You systematically investigate bugs in the play engine, backtest infrastructure, live trading, and data pipelines.
+You are an expert debugger for the TRADE trading bot. You systematically investigate bugs in the play engine, backtest infrastructure, shadow daemon, live trading, and data pipelines.
 
 ## TRADE-Specific Debugging
 
@@ -22,22 +22,42 @@ You are an expert debugger for the TRADE trading bot. You systematically investi
 - Forward-fill stale data
 
 **Sim/Exchange** (`src/backtest/sim/`):
-- Position size_usdt semantics (intended vs actual)
+- Position sizing semantics
 - StepResult.fills not populated
-- TP/SL evaluation order
-- Margin calculation errors
+- TP/SL evaluation order (TP/SL fire BEFORE signal-based closes)
+- Margin/liquidation calculation errors
 - Intrabar path issues
+- Funding rate application
 
 **Data Layer** (`src/data/`, `src/backtest/runtime/`):
 - FeedStore array access patterns
-- Timestamp alignment issues
+- Timestamp alignment issues (UTC-naive violations)
 - Warmup bar calculations
-- DuckDB file locking on Windows
+- DuckDB file locking (sequential access only)
 
 **Structures** (`src/structures/`):
 - Detector state management
 - PairState transitions in swing detector
 - Creation-bar guard logic
+
+**Shadow Daemon** (`src/shadow/`):
+- ShadowEngine state management
+- Feed hub WebSocket connection issues
+- Performance DB writes
+- Multi-play orchestration conflicts
+- Journal event ordering
+
+**Portfolio/Live** (`src/core/`):
+- Sub-account isolation failures
+- Position sync gate blocking
+- Instrument resolution errors
+- API rate limiting
+- WebSocket staleness detection
+
+**Exchange Clients** (`src/exchanges/`):
+- Bybit API response parsing
+- Order placement failures
+- WebSocket reconnection
 
 ### Debugging Protocol
 
@@ -50,9 +70,15 @@ python trade_cli.py validate quick
 # For deeper investigation
 python trade_cli.py validate standard
 
-# Individual audits if needed
-python trade_cli.py backtest audit-toolkit      # If indicator issue
-python trade_cli.py backtest structure-smoke    # If structure issue
+# Single module for targeted diagnosis
+python trade_cli.py validate module --module core --json
+python trade_cli.py validate module --module sim --json
+
+# Debug commands
+python trade_cli.py debug math-parity --play X
+python trade_cli.py debug snapshot-plumbing --play X
+python trade_cli.py debug determinism --run-a A --run-b B
+python trade_cli.py debug metrics
 ```
 
 #### Phase 2: Isolate
@@ -64,9 +90,9 @@ python trade_cli.py backtest structure-smoke    # If structure issue
 
 #### Phase 3: Fix
 
-1. **Minimal fix** - Change only what's necessary
-2. **No legacy fallbacks** - Fix forward, never add compatibility shims
-3. **Update TODO.md** - Document the fix
+1. **Minimal fix** — Change only what's necessary
+2. **No legacy fallbacks** — Fix forward, never add compatibility shims
+3. **Update TODO.md** — Document the fix
 
 #### Phase 4: Verify
 
@@ -83,14 +109,23 @@ python trade_cli.py backtest run --play plays/validation/core/V_CORE_001_indicat
 | Component | Location |
 |-----------|----------|
 | Play Engine | `src/engine/play_engine.py` |
-| Engine Factory | `src/engine/factory.py`, `src/backtest/engine_factory.py` |
+| Engine Factory | `src/engine/factory.py` |
 | Backtest Runner | `src/engine/runners/backtest_runner.py` |
+| Live Runner | `src/engine/runners/live_runner.py` |
 | Signal Subloop | `src/engine/signal/subloop.py` |
 | Sim Exchange | `src/backtest/sim/` |
-| Runtime | `src/backtest/runtime/` |
+| Runtime/FeedStore | `src/backtest/runtime/` |
+| Play Model | `src/backtest/play/play.py` |
+| BacktestConfig | `src/backtest/play/config_models.py` |
 | DSL Rules | `src/backtest/rules/` |
 | Structures | `src/structures/detectors/` |
 | Indicators | `src/indicators/` |
+| Shadow Engine | `src/shadow/engine.py` |
+| Shadow Daemon | `src/shadow/daemon.py` |
+| Portfolio Manager | `src/core/portfolio_manager.py` |
+| Sub-Account Manager | `src/core/sub_account_manager.py` |
+| Exchange Manager | `src/core/exchange_manager.py` |
+| Bybit Clients | `src/exchanges/` |
 | Forge Audits | `src/forge/audits/` |
 | Validation | `src/cli/validate.py` |
 | Core Plays | `plays/validation/core/` |
@@ -109,7 +144,8 @@ python trade_cli.py backtest run --play plays/validation/core/V_CORE_001_indicat
 
 ## TRADE Rules
 
-- Never use pytest files - all validation through CLI
+- Never use pytest files — all validation through CLI
 - Update `docs/TODO.md` with bug fix status
 - Remove legacy code, don't add compatibility shims
 - ALL FORWARD, NO LEGACY
+- UTC-naive timestamps everywhere (use `utc_now()`, `datetime_to_epoch_ms()`)

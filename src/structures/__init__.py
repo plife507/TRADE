@@ -9,7 +9,6 @@ Public API:
 -----------
 
 Types (from types.py):
-    StructureType    - Enum of supported structure types
     ZoneType         - Enum of zone types (demand/supply)
     ZoneState        - Enum of zone states (NONE, ACTIVE, BROKEN)
     TrendState       - Enum of trend states (UNKNOWN, UP, DOWN)
@@ -79,7 +78,6 @@ See: docs/architecture/INCREMENTAL_STATE_ARCHITECTURE.md
 
 # Types
 from .types import (
-    StructureType,
     ZoneType,
     ZoneState,
     TrendState,
@@ -134,7 +132,6 @@ from .detectors import (
 
 __all__ = [
     # Types
-    "StructureType",
     "ZoneType",
     "ZoneState",
     "TrendState",

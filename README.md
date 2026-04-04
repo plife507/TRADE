@@ -18,6 +18,13 @@ timeframes:
   high_tf: "D"
   exec: "low_tf"
 
+account:
+  starting_equity_usdt: 10000.0
+  max_leverage: 1.0
+  margin_mode: "isolated_usdt"
+  fee_model: { taker_bps: 5.5, maker_bps: 2.0 }
+  slippage_bps: 2.0
+
 features:
   rsi_14: { indicator: rsi, params: { length: 14 } }
   bbands_20: { indicator: bbands, params: { length: 20, std: 2.0 } }
@@ -25,13 +32,26 @@ features:
 
 actions:
   entry_long:
-    conditions:
+    all:
       - ["close", "<", "bbands_20.lower"]
       - ["rsi_14", "<", 35]
       - ["close", ">", "ema_50_1h"]
-    sizing: { model: percent_equity, risk_pct: 2.0 }
-    sl_pct: 2.0
-    tp_pct: 4.0
+
+  exit_long:
+    any:
+      - ["close", ">", "bbands_20.upper"]
+
+position_policy:
+  mode: long_only
+  exit_mode: first_hit
+  max_positions_per_symbol: 1
+
+risk:
+  stop_loss_pct: 2.0
+  take_profit_pct: 4.0
+
+validation:
+  pattern: "range_wide"
 ```
 
 ## Architecture
@@ -41,13 +61,13 @@ src/
   engine/          PlayEngine - unified backtest/live engine
   shadow/          Shadow daemon (SimExchange + PerformanceDB, multi-play, live WS)
   core/            Exchange manager, portfolio, sub-accounts, risk, order execution
-  indicators/      44 incremental O(1) indicators
-  structures/      7 market structure detectors
+  indicators/      47 incremental O(1) indicators
+  structures/      13 market structure detectors (7 core + 6 ICT)
   backtest/        Backtest infrastructure (sim exchange, data prep, DSL parser)
   data/            DuckDB historical data store + realtime WS state
   exchanges/       Bybit REST + WebSocket clients
   cli/             CLI subcommands (backtest, play, shadow, portfolio, validate)
-  tools/           82+ registered tools — CLI, agents, and web UI all use the same layer
+  tools/           124 exported tools — CLI, agents, and web UI all use the same layer
   risk/            Risk management + global risk view
   config/          Configuration + UTA constants
 
@@ -73,7 +93,7 @@ Backtest (historical sim, USDT)  →  Shadow (live data sim, deploy scale)  → 
 | **PortfolioManager** | Full UTA control: sub-account lifecycle, parallel deployment, 22 registered tools. |
 | **InstrumentRegistry** | Resolves any Bybit symbol (USDT/USDC/inverse) to category, settle coin, and filters. |
 | **DuckDB Store** | Historical OHLCV storage with gap detection, auto-repair, and multi-timeframe support. |
-| **Incremental Indicators** | All 44 indicators compute in O(1) per bar. No lookback recomputation. |
+| **Incremental Indicators** | All 47 indicators compute in O(1) per bar. No lookback recomputation. |
 | **Structure Detectors** | Swing points, trend detection, market structure (BOS/CHoCH), Fibonacci, derived zones. |
 
 ### Live Trading Safety
@@ -89,7 +109,7 @@ Backtest (historical sim, USDT)  →  Shadow (live data sim, deploy scale)  → 
 | **Trade Journal** | JSONL log of every signal, fill, and error for post-session review. |
 | **Notifications** | Telegram and Discord alerts for signals, fills, and errors. |
 
-## Indicators (44)
+## Indicators (47)
 
 **Moving Averages (12):** EMA, SMA, WMA, DEMA, TEMA, TRIMA, ZLMA, KAMA, ALMA, LINREG, Anchored VWAP, VWAP
 
@@ -105,7 +125,9 @@ Backtest (historical sim, USDT)  →  Shadow (live data sim, deploy scale)  → 
 
 **Price (1):** OHLC4/Midprice
 
-## Market Structure Detectors (7)
+## Market Structure Detectors (13)
+
+### Core (7)
 
 | Detector | Output Fields | Description |
 |----------|--------------|-------------|
@@ -116,6 +138,17 @@ Backtest (historical sim, USDT)  →  Shadow (live data sim, deploy scale)  → 
 | **Derived Zone** | `zone[N].state`, `any_touched`, `first_active_*` | K-slot supply/demand zone model |
 | **Rolling Window** | `min`, `max`, `range` | Rolling min/max/range |
 | **Zone** | `upper`, `lower`, `state` | Basic zone detection |
+
+### ICT (6)
+
+| Detector | Output Fields | Description |
+|----------|--------------|-------------|
+| **Displacement** | `is_displacement`, `direction`, `body_atr_ratio` | Strong impulsive candle detection |
+| **Fair Value Gap** | `new_this_bar`, `nearest_bull_upper/lower`, `active_bull_count` | 3-candle price imbalance gaps |
+| **Order Block** | `new_this_bar`, `nearest_bull_upper/lower`, `active_bull_count` | Last opposing candle before displacement |
+| **Liquidity Zones** | `sweep_this_bar`, `sweep_direction`, `nearest_high/low_level` | Equal highs/lows cluster detection + sweeps |
+| **Premium/Discount** | `equilibrium`, `zone`, `depth_pct` | Swing range premium/discount zones |
+| **Breaker Block** | `new_this_bar`, `nearest_bull_upper/lower`, `active_bull_count` | Failed order blocks that flip polarity |
 
 ## Play DSL
 
@@ -210,27 +243,27 @@ python trade_cli.py validate full                  # Everything (~10min)
 python trade_cli.py validate pre-live --play <name> # Pre-live readiness check
 
 # Suite Runners
-python scripts/run_full_suite.py                                    # 170-play synthetic
+python scripts/run_full_suite.py                                    # 229-play synthetic
 python scripts/run_full_suite.py --real --start 2025-10-01 --end 2026-01-01  # Real data
 ```
 
 ## Verification
 
-### Backtest Suites (170 Plays)
+### Backtest Suites (229 Plays)
 
-The engine is validated by 170 plays across 5 suites, tested on both synthetic patterns and real market data:
+The engine is validated by 229 plays across 5 suites, tested on both synthetic patterns and real market data:
 
 | Suite | Plays | Coverage |
 |-------|-------|----------|
-| `plays/validation/indicators/` | 84 | All 44 indicators in long/short/crossover configurations |
-| `plays/validation/patterns/` | 34 | 34 synthetic market patterns (trending, ranging, volatile, reversals, etc.) |
+| `plays/validation/indicators/` | 88 | All 47 indicators in long/short/crossover configurations |
+| `plays/validation/patterns/` | 38 | 38 synthetic market patterns (trending, ranging, volatile, reversals, ICT, etc.) |
 | `plays/validation/operators/` | 25 | All DSL operators (comparison, crossover, arithmetic, window, control flow) |
-| `plays/validation/structures/` | 14 | All 7 structure types with dependency chains |
+| `plays/validation/structures/` | 26 | All 13 structure types (7 core + 6 ICT) with dependency chains |
 | `plays/validation/complexity/` | 13 | Progressive complexity from 0% to 100% DSL coverage |
 
-Results: 170/170 pass on synthetic data, 170/170 pass on real data (BTC, ETH, SOL, ARB, OP).
+Results: 229/229 pass on synthetic data, 229/229 pass on real data (BTC, ETH, SOL, ARB, OP).
 
-Additionally, a 60-play Wyckoff real-data verification suite validates 41/43 indicators, 7/7 structures, and 19/24 DSL operators across 4 symbols (BTC, ETH, SOL, LTC) with 23 math checks per play.
+Additionally, a 61-play Wyckoff real-data verification suite validates indicators, structures, and DSL operators across 4 symbols (BTC, ETH, SOL, LTC) with 23 math checks per play.
 
 ## Exchange Support
 
@@ -268,8 +301,8 @@ System defaults are in `config/defaults.yml`. Plays override any default. Key de
 |----------|-------------|
 | `docs/PLAY_DSL_REFERENCE.md` | Unified DSL syntax reference (frozen semantics) |
 | `docs/TODO.md` | Project status and gate tracking |
-| `docs/SESSION_HANDOFF.md` | Session handoff with quick commands |
-| `docs/plans/LIVE_READINESS_GLOBAL.md` | Live readiness gate overview (G14-G17) |
+| `docs/architecture/ARCHITECTURE.md` | System architecture and module definitions |
+| `docs/VALIDATION_BEST_PRACTICES.md` | Validation tier guide |
 | `config/defaults.yml` | All system defaults with sources |
 | `CLAUDE.md` | Development conventions |
 

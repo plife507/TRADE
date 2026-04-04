@@ -389,39 +389,4 @@ def compute_input_hash(
     return components.compute_short_hash(length=short_hash_length)
 
 
-def compute_input_hash_full(components: InputHashComponents) -> str:
-    """
-    Compute full SHA256 hash of backtest inputs.
-    
-    Used for manifest storage and verification.
-    """
-    return components.compute_full_hash()
-
-
-def verify_short_hash_derivation(full_hash: str, short_hash: str) -> bool:
-    """
-    Verify that short_hash is correctly derived from full_hash.
-    
-    Args:
-        full_hash: Full 64-char SHA256 hash
-        short_hash: Short hash (8 or 12 chars)
-        
-    Returns:
-        True if full_hash starts with short_hash
-    """
-    return full_hash.startswith(short_hash)
-
-
-def compute_artifact_file_hash(file_path: str) -> str:
-    """
-    Compute SHA256 hash of a file's contents.
-    
-    Args:
-        file_path: Path to file
-        
-    Returns:
-        Full SHA256 hash of file contents
-    """
-    with open(file_path, 'rb') as f:
-        return hashlib.sha256(f.read()).hexdigest()
 

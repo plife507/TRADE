@@ -23,8 +23,7 @@ from ...utils.datetime_utils import utc_now
 from typing import TYPE_CHECKING, Any, cast
 
 if TYPE_CHECKING:
-    from ..play import Play
-    from src.indicators.metadata import IndicatorMetadata
+    from ...indicators.metadata import IndicatorMetadata
 
 from .feature_spec import (
     FeatureSpec,
@@ -281,11 +280,6 @@ class IndicatorCompute:
         """List all available indicator types (from main registry)."""
         from ..indicator_registry import get_registry as get_main_registry
         return get_main_registry().list_indicators()
-
-    def list_custom_overrides(self) -> list[str]:
-        """List indicator types with custom overrides registered."""
-        return list(self._custom_registry.keys())
-
 
 # Global compute adapter instance
 _default_compute = IndicatorCompute()
@@ -765,123 +759,3 @@ class FeatureFrameBuilder:
         return self.build(df, spec_set, tf_role=tf_role)
 
 
-# =============================================================================
-# Play Feature Building
-# =============================================================================
-
-@dataclass
-class PlayFeatures:
-    """
-    Container for features computed from an Play.
-
-    Holds FeatureArrays for each TF role (exec, high_tf, med_tf).
-    """
-    play_id: str
-    symbol: str
-
-    # FeatureArrays per TF role
-    exec_features: FeatureArrays | None = None
-    high_tf_features: FeatureArrays | None = None
-    med_tf_features: FeatureArrays | None = None
-
-    # Raw DataFrames per TF (for engine use)
-    exec_df: pd.DataFrame | None = None
-    high_tf_df: pd.DataFrame | None = None
-    med_tf_df: pd.DataFrame | None = None
-
-    def get_features_for_role(self, role: str) -> FeatureArrays | None:
-        """Get FeatureArrays for a TF role."""
-        if role == "exec":
-            return self.exec_features
-        elif role == "high_tf":
-            return self.high_tf_features
-        elif role == "med_tf":
-            return self.med_tf_features
-        return None
-
-    def get_df_for_role(self, role: str) -> pd.DataFrame | None:
-        """Get DataFrame for a TF role."""
-        if role == "exec":
-            return self.exec_df
-        elif role == "high_tf":
-            return self.high_tf_df
-        elif role == "med_tf":
-            return self.med_tf_df
-        return None
-
-
-def build_features_from_play(
-    play: Any,
-    data_loader: Callable[[str, str], pd.DataFrame],
-    symbol: str | None = None,
-    builder: FeatureFrameBuilder | None = None,
-) -> PlayFeatures:
-    """
-    Build all features for an Play.
-    
-    Loads data for each TF configured in the Play and computes
-    indicators using FeatureFrameBuilder.
-    
-    This is the canonical path for feature computation:
-    Play → FeatureSpecSets → FeatureFrameBuilder → FeatureArrays
-    
-    Args:
-        play: The Play defining features
-        data_loader: Function(symbol, tf) -> DataFrame with OHLCV data
-        symbol: Override symbol (default: first in symbol_universe)
-        builder: Optional FeatureFrameBuilder (default: create new)
-        
-    Returns:
-        PlayFeatures with FeatureArrays per TF role
-        
-    Raises:
-        ValueError: If data_loader returns empty DataFrame
-    """
-    if symbol is None:
-        if not play.symbol_universe:
-            raise ValueError("Play has no symbols in symbol_universe")
-        symbol = play.symbol_universe[0]
-    
-    if builder is None:
-        builder = FeatureFrameBuilder()
-
-    assert symbol is not None
-    result = PlayFeatures(
-        play_id=play.id,
-        symbol=symbol,
-    )
-    
-    # Process each TF role
-    for role, tf_config in play.tf_configs.items():
-        tf = tf_config.tf
-        
-        # Load data
-        df = data_loader(symbol, tf)
-        if df is None or df.empty:
-            raise ValueError(
-                f"data_loader returned empty data for {symbol} {tf}. "
-                f"Ensure data exists before calling build_features_from_play."
-            )
-        
-        # Build FeatureSpecSet from Play's TFConfig
-        spec_set = play.get_feature_spec_set(role, symbol)
-        
-        if spec_set and spec_set.specs:
-            # Compute features with tf_role for metadata provenance
-            arrays = builder.build(df, spec_set, tf_role=role)
-        else:
-            # No features declared for this TF - just use OHLCV
-            arrays = FeatureArrays.empty(symbol=symbol, tf=tf, length=len(df))
-        
-        # Store by role
-        if role == "exec":
-            result.exec_features = arrays
-            result.exec_df = df
-        elif role == "high_tf":
-            result.high_tf_features = arrays
-            result.high_tf_df = df
-        elif role == "med_tf":
-            result.med_tf_features = arrays
-            result.med_tf_df = df
-
-    return result

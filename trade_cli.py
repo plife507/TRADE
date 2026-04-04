@@ -195,6 +195,7 @@ def main():
             module_name=getattr(args, "module", None),
             play_timeout=getattr(args, "timeout", 120),
             gate_timeout=getattr(args, "gate_timeout", 300),
+            confirm=getattr(args, "confirm", False),
         ))
 
     # ===== SHADOW =====

@@ -40,8 +40,6 @@ Usage:
     result = runner.run()
 """
 
-from types import SimpleNamespace
-
 from dataclasses import dataclass, field
 from datetime import datetime
 from typing import TYPE_CHECKING, Any
@@ -113,113 +111,6 @@ class BacktestResult:
     # Metadata
     metadata: dict[str, Any] = field(default_factory=dict)
 
-
-    @property
-    def metrics(self):
-        """
-        Compatibility property for legacy metrics access.
-
-        Returns a SimpleNamespace with field names matching the old BacktestResult.metrics format.
-        Uses computed_metrics from metadata when available (properly computed Sharpe/Sortino/etc).
-        """
-        # Get computed metrics from metadata if available
-        computed = self.metadata.get("computed_metrics")
-
-        if computed is not None:
-            # Use fully computed metrics
-            return SimpleNamespace(
-                # Core trade metrics
-                total_trades=computed.total_trades,
-                win_count=computed.win_count,
-                loss_count=computed.loss_count,
-                win_rate=computed.win_rate,
-
-                # PnL metrics
-                net_profit=computed.net_profit,
-                gross_profit=computed.gross_profit,
-                gross_loss=computed.gross_loss,
-                net_return_pct=computed.net_return_pct,
-
-                # Drawdown
-                max_drawdown_abs=computed.max_drawdown_abs,
-                max_drawdown_pct=computed.max_drawdown_pct,
-                max_drawdown_duration_bars=computed.max_drawdown_duration_bars,
-
-                # Risk-adjusted returns (NOW PROPERLY COMPUTED)
-                sharpe=computed.sharpe,
-                sortino=computed.sortino,
-                calmar=computed.calmar,
-                profit_factor=computed.profit_factor,
-
-                # Trade analytics (NOW PROPERLY COMPUTED)
-                avg_win_usdt=computed.avg_win_usdt,
-                avg_loss_usdt=computed.avg_loss_usdt,
-                largest_win_usdt=computed.largest_win_usdt,
-                largest_loss_usdt=computed.largest_loss_usdt,
-                avg_trade_duration_bars=computed.avg_trade_duration_bars,
-                max_consecutive_wins=computed.max_consecutive_wins,
-                max_consecutive_losses=computed.max_consecutive_losses,
-                expectancy_usdt=computed.expectancy_usdt,
-                payoff_ratio=computed.payoff_ratio,
-                recovery_factor=computed.recovery_factor,
-                total_fees=computed.total_fees,
-
-                # Long/short breakdown
-                long_trades=computed.long_trades,
-                short_trades=computed.short_trades,
-                long_win_rate=computed.long_win_rate,
-                short_win_rate=computed.short_win_rate,
-                long_pnl=computed.long_pnl,
-                short_pnl=computed.short_pnl,
-
-                # Time metrics
-                total_bars=computed.total_bars,
-                bars_in_position=computed.bars_in_position,
-                time_in_market_pct=computed.time_in_market_pct,
-
-                # Timing (for eval_start_ts_ms extraction)
-                simulation_start=self.start_ts,
-            )
-
-        # Fallback to basic metrics if computed_metrics not available
-        return SimpleNamespace(
-            total_trades=self.total_trades,
-            win_count=self.winning_trades,
-            loss_count=self.losing_trades,
-            win_rate=self.win_rate,
-            net_profit=self.net_profit,
-            gross_profit=self.gross_profit,
-            gross_loss=abs(self.gross_loss),
-            net_return_pct=((self.final_equity - self.initial_equity) / self.initial_equity * 100.0) if self.initial_equity > 0 else 0.0,
-            max_drawdown_abs=self.max_drawdown_usdt,
-            max_drawdown_pct=self.max_drawdown_pct,
-            max_drawdown_duration_bars=0,
-            sharpe=self.sharpe_ratio,
-            sortino=0.0,
-            calmar=0.0,
-            profit_factor=self.profit_factor,
-            avg_win_usdt=0.0,
-            avg_loss_usdt=0.0,
-            largest_win_usdt=0.0,
-            largest_loss_usdt=0.0,
-            avg_trade_duration_bars=0,
-            max_consecutive_wins=0,
-            max_consecutive_losses=0,
-            expectancy_usdt=0.0,
-            payoff_ratio=0.0,
-            recovery_factor=0.0,
-            total_fees=self.total_fees,
-            long_trades=0,
-            short_trades=0,
-            long_win_rate=0.0,
-            short_win_rate=0.0,
-            long_pnl=0.0,
-            short_pnl=0.0,
-            total_bars=self.bars_processed,
-            bars_in_position=0,
-            time_in_market_pct=0.0,
-            simulation_start=self.start_ts,
-        )
 
 class BacktestRunner:
     """

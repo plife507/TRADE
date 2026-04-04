@@ -487,7 +487,7 @@ The Shadow Exchange (M4) runs the SimulatedExchange with a real WebSocket feed �
 - [ ] **GATE**: New validation play: `SIM_SPLIT_001` — 3-level TP (50/30/20), verify 3 partial fills
 - [ ] **GATE**: New validation play: `SIM_SPLIT_002` — SL fires after TP1, verify partial position closed at SL
 - [ ] **GATE**: New validation play: `SIM_SPLIT_003` — modify SL post-entry via engine hook, verify new SL used
-- [ ] **GATE**: Existing 170 synthetic plays still pass with new Position model
+- [ ] **GATE**: Existing 229 synthetic plays still pass with new Position model
 
 ### Phase 3: Safety & Polish (M1 + M2 + M3)
 

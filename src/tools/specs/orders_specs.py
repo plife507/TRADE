@@ -20,6 +20,7 @@ def get_imports():
         stop_market_buy_tool, stop_market_sell_tool,
         stop_limit_buy_tool, stop_limit_sell_tool,
         get_open_orders_tool, cancel_order_tool, amend_order_tool, cancel_all_orders_tool,
+        batch_market_orders_tool, batch_limit_orders_tool, batch_cancel_orders_tool,
     )
     return {
         "market_buy": market_buy_tool,
@@ -37,6 +38,9 @@ def get_imports():
         "cancel_order": cancel_order_tool,
         "amend_order": amend_order_tool,
         "cancel_all_orders": cancel_all_orders_tool,
+        "batch_market_orders": batch_market_orders_tool,
+        "batch_limit_orders": batch_limit_orders_tool,
+        "batch_cancel_orders": batch_cancel_orders_tool,
     }
 
 
@@ -236,5 +240,48 @@ SPECS = [
             "trading_env": TRADING_ENV_PARAM,
         },
         "required": [],
+    },
+    # Batch Orders
+    {
+        "name": "batch_market_orders",
+        "description": "Place multiple market orders in a batch (max 10 per batch)",
+        "category": "orders.batch",
+        "parameters": {
+            "orders": {
+                "type": "array",
+                "description": "List of order dicts with: symbol, side (Buy/Sell), usd_amount, take_profit (optional), stop_loss (optional)",
+                "items": {"type": "object"},
+            },
+            "trading_env": TRADING_ENV_PARAM,
+        },
+        "required": ["orders"],
+    },
+    {
+        "name": "batch_limit_orders",
+        "description": "Place multiple limit orders in a batch (max 10 per batch)",
+        "category": "orders.batch",
+        "parameters": {
+            "orders": {
+                "type": "array",
+                "description": "List of order dicts with: symbol, side (Buy/Sell), usd_amount, price, time_in_force (optional), reduce_only (optional)",
+                "items": {"type": "object"},
+            },
+            "trading_env": TRADING_ENV_PARAM,
+        },
+        "required": ["orders"],
+    },
+    {
+        "name": "batch_cancel_orders",
+        "description": "Cancel multiple orders in a batch (max 10 per batch)",
+        "category": "orders.batch",
+        "parameters": {
+            "orders": {
+                "type": "array",
+                "description": "List of order dicts with: symbol, orderId (or orderLinkId)",
+                "items": {"type": "object"},
+            },
+            "trading_env": TRADING_ENV_PARAM,
+        },
+        "required": ["orders"],
     },
 ]

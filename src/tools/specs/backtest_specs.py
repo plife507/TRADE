@@ -14,6 +14,7 @@ def get_imports():
         backtest_list_plays_tool,
         backtest_indicators_tool,
         backtest_play_normalize_tool,
+        backtest_play_normalize_batch_tool,
         backtest_audit_toolkit_tool,
         backtest_audit_rollup_parity_tool,
         backtest_math_parity_tool,
@@ -27,6 +28,7 @@ def get_imports():
         "backtest_data_fix": backtest_data_fix_tool,
         "backtest_indicators": backtest_indicators_tool,
         "backtest_normalize_play": backtest_play_normalize_tool,
+        "backtest_normalize_batch": backtest_play_normalize_batch_tool,
         "backtest_audit_toolkit": backtest_audit_toolkit_tool,
         "backtest_audit_rollup": backtest_audit_rollup_parity_tool,
         "backtest_audit_math_parity": backtest_math_parity_tool,
@@ -110,6 +112,16 @@ SPECS = [
             "write_in_place": {"type": "boolean", "description": "Write normalized YAML", "default": False},
         },
         "required": ["play_id"],
+    },
+    {
+        "name": "backtest_normalize_batch",
+        "description": "Batch normalize all Plays in a directory",
+        "category": "backtest.play",
+        "parameters": {
+            "plays_dir": {"type": "string", "description": "Directory containing Play YAML files"},
+            "write_in_place": {"type": "boolean", "description": "Write normalized YAML back to files", "default": False},
+        },
+        "required": ["plays_dir"],
     },
     # Audit tools
     {

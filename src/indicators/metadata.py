@@ -18,8 +18,6 @@ HASH PAYLOAD:
 - EXCLUDES: tf, tf_role, symbol, output_key (stored in metadata but not hashed)
 """
 
-from __future__ import annotations
-
 import hashlib
 import json
 import numpy as np
