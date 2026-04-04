@@ -269,14 +269,15 @@ Shadow reads `deploy.capital` for equity — dress rehearsal at deploy scale.
 - [x] `PlayDeployer.deploy()` — defaults capital from `play.deploy_config`, uses deploy settle_coin
 - [x] **GATE**: Factory reads correct equity per mode, pyright clean
 
-### Phase 4: Remove Migrated Fields from AccountConfig
-- [ ] Remove `starting_equity_usdt` from AccountConfig (moved to BacktestConfig)
-- [ ] Remove `slippage_bps` from AccountConfig (moved to BacktestConfig)
-- [ ] Remove dead fields: `max_notional_usdt`, `max_margin_usdt` (never used anywhere)
-- [ ] Update all references across codebase
-- [ ] **GATE**: `grep -r "max_notional_usdt\|max_margin_usdt" src/` → zero hits
+### Phase 4: Remove Migrated Fields from AccountConfig — DEFERRED
+Fields stay on AccountConfig as backward-compat aliases. BacktestConfig/DeployConfig are the
+preferred read path (wired in Phase 3). Full migration deferred — 30+ references across 12 files
+(validation gates, live adapter reconciliation, forge validators, backtest tools).
+- [ ] Remove `starting_equity_usdt` from AccountConfig (30+ references to update)
+- [ ] Remove `slippage_bps` from AccountConfig
+- [ ] Remove dead fields: `max_notional_usdt`, `max_margin_usdt`
+- [ ] Update all references across: validate.py, live.py, backtest_play_tools.py, forge/, constants.py
 - [ ] **GATE**: `python3 trade_cli.py validate standard` passes
-- [ ] **GATE**: pyright passes on all source
 
 ### Phase 5: Documentation + Final Audit
 - [ ] Update `CLAUDE.md` — remove `play run --mode shadow`, update architecture
