@@ -72,7 +72,7 @@ def _build_config_from_play(
 
     Args:
         play: Play instance with account + risk_model
-        mode: Engine mode (backtest/live/shadow)
+        mode: Engine mode (backtest/live)
         persist_state: Whether to enable state persistence
         state_save_interval: How often to save state (bars)
         config_override: Optional overrides applied last

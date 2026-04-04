@@ -3,7 +3,7 @@ Argument parser setup for TRADE CLI.
 
 Defines all subcommands and their arguments:
 - backtest: Play-based backtesting (run, preflight, indicators, data-fix, list, normalize)
-- play: Unified Play engine (backtest/live/shadow)
+- play: Unified Play engine (backtest/live)
 - validate: Unified validation suite (quick/standard/full/pre-live/exchange)
 - debug: Diagnostic tools (math-parity, snapshot-plumbing, determinism, metrics)
 """

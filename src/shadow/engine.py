@@ -93,7 +93,7 @@ class ShadowEngine:
         if self._play.deploy_config:
             self._initial_equity = self._play.deploy_config.capital
         else:
-            self._initial_equity = self._initial_equity
+            self._initial_equity = self._config.initial_equity_usdt
 
         # External price overrides (from WS ticker)
         self._latest_mark_price: float | None = None

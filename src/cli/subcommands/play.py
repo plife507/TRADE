@@ -19,7 +19,8 @@ def handle_play_run(args) -> int:
     Modes:
         backtest: Historical data simulation
         live: Real-time data with Bybit live API (real money)
-        shadow: Real-time data with signal logging only (no execution)
+
+    Shadow mode: use `shadow run --play X` (daemon with full SimExchange).
     """
     import yaml
     from datetime import datetime, timedelta
