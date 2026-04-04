@@ -233,6 +233,61 @@ Branch: `feature/uta-portfolio-management`
 
 ---
 
+## M9: Shadow Unification + Play DSL Split
+
+Kill factory shadow (no-op ShadowExchange/ShadowRunner). Unify on daemon shadow (full SimExchange + PerformanceDB).
+Split Play DSL: `account:` (shared) + `backtest:` (sim equity/slippage) + `deploy:` (live capital/settle coin).
+Shadow reads `deploy.capital` for equity — dress rehearsal at deploy scale.
+
+### Phase 1: Kill Factory Shadow
+- [ ] Delete `src/engine/runners/shadow_runner.py` (entire file — ShadowRunner, ShadowSignal, ShadowStats)
+- [ ] Delete `ShadowExchange` class from `src/engine/adapters/backtest.py:543-591`
+- [ ] Delete `_create_shadow()` from `src/engine/factory.py`
+- [ ] Delete `is_shadow` property + shadow signal intercept from `src/engine/play_engine.py:551-561`
+- [ ] Remove "shadow" from mode Literal in `factory.py`, `play_engine.py`, `interfaces.py`
+- [ ] Remove ShadowExchange/ShadowRunner from `__init__.py` exports (engine, adapters, runners)
+- [ ] `src/cli/subcommands/play.py` — replace shadow routing with redirect to `shadow run`
+- [ ] `src/cli/argparser.py` — remove "shadow" from `--mode` choices
+- [ ] **GATE**: `grep -r "ShadowExchange\|ShadowRunner\|is_shadow\|_create_shadow" src/ --include="*.py"` → zero hits
+- [ ] **GATE**: pyright passes on `src/engine/`
+- [ ] **GATE**: `python3 trade_cli.py shadow run --play scalp_1m` still works (daemon path untouched)
+
+### Phase 2: Add BacktestConfig + DeployConfig Models
+- [ ] `BacktestConfig` dataclass: `equity: float`, `slippage_bps: float` (with backward compat from `account:`)
+- [ ] `DeployConfig` dataclass: `capital: float`, `settle_coin: str`, `dcp_window: int`
+- [ ] Add `backtest_config: BacktestConfig` and `deploy_config: DeployConfig` fields to `Play` dataclass
+- [ ] `Play.from_dict()` — parse `d.get("backtest")` and `d.get("deploy")` sections
+- [ ] Backward compat: if no `backtest:` section, construct from `account:` values
+- [ ] Add `backtest:` and `deploy:` defaults to `config/defaults.yml`
+- [ ] **GATE**: All existing plays load without changes (backward compat)
+- [ ] **GATE**: `python3 trade_cli.py backtest run --play scalp_1m --synthetic` passes
+- [ ] **GATE**: pyright passes on `src/backtest/play/`
+
+### Phase 3: Wire Consumers to New Config
+- [ ] `_build_config_from_play()` — backtest reads `play.backtest_config.equity`, live reads `play.deploy_config.capital`
+- [ ] `ShadowEngine._create_sim_exchange()` — read `play.deploy_config.capital` (not ShadowPlayConfig)
+- [ ] `PlayDeployer.deploy()` — read `play.deploy_config.capital` and `settle_coin` and `dcp_window`
+- [ ] **GATE**: Backtest uses backtest.equity, shadow uses deploy.capital
+- [ ] **GATE**: `python3 trade_cli.py validate quick` passes
+
+### Phase 4: Remove Migrated Fields from AccountConfig
+- [ ] Remove `starting_equity_usdt` from AccountConfig (moved to BacktestConfig)
+- [ ] Remove `slippage_bps` from AccountConfig (moved to BacktestConfig)
+- [ ] Remove dead fields: `max_notional_usdt`, `max_margin_usdt` (never used anywhere)
+- [ ] Update all references across codebase
+- [ ] **GATE**: `grep -r "max_notional_usdt\|max_margin_usdt" src/` → zero hits
+- [ ] **GATE**: `python3 trade_cli.py validate standard` passes
+- [ ] **GATE**: pyright passes on all source
+
+### Phase 5: Documentation + Final Audit
+- [ ] Update `CLAUDE.md` — remove `play run --mode shadow`, update architecture
+- [ ] Update `docs/PLAY_DSL_REFERENCE.md` — document `backtest:` and `deploy:` sections
+- [ ] Run full audit agent for orphaned references
+- [ ] **GATE**: `python3 trade_cli.py validate full` passes
+- [ ] **GATE**: All docs reflect three-section Play DSL
+
+---
+
 ## Pre-Deployment (fix before live trading)
 
 ### T3: Live Blockers
