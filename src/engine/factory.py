@@ -110,15 +110,29 @@ def _build_config_from_play(
             "Play account.slippage_bps is None. "
             "AccountConfig.from_dict() should always populate this from defaults.yml."
         )
+    # Equity source depends on mode:
+    # - backtest: sim capital from backtest_config.equity
+    # - live: deploy capital from deploy_config.capital (overridden by actual exchange balance)
+    if mode == "backtest" and play.backtest_config:
+        initial_equity = play.backtest_config.equity
+        slippage = play.backtest_config.slippage_bps
+    elif mode == "live" and play.deploy_config:
+        initial_equity = play.deploy_config.capital
+        slippage = account.slippage_bps  # Sim-only but kept for sizing estimation
+    else:
+        # Fallback to account values (backward compat)
+        initial_equity = account.starting_equity_usdt
+        slippage = account.slippage_bps
+
     config = PlayEngineConfig(
         mode=mode,
-        initial_equity=account.starting_equity_usdt,
+        initial_equity=initial_equity,
         risk_per_trade_pct=risk_per_trade_pct,
         max_leverage=max_leverage,
         min_trade_usdt=account.min_trade_notional_usdt,
         taker_fee_rate=fee_model.taker_bps / 10000.0,
         maker_fee_rate=fee_model.maker_bps / 10000.0,
-        slippage_bps=account.slippage_bps,
+        slippage_bps=slippage,
         persist_state=persist_state,
         state_save_interval=state_save_interval,
         on_sl_beyond_liq=account.on_sl_beyond_liq,

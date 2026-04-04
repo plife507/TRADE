@@ -68,13 +68,13 @@ class PlayDeployer:
         self._pm = portfolio_manager
         self._deployments: dict[int, DeployedPlay] = {}
 
-    async def deploy(self, play_path: str, capital: float) -> int:
+    async def deploy(self, play_path: str, capital: float | None = None) -> int:
         """
         Full deployment pipeline.
 
         Args:
             play_path: Play identifier or YAML path
-            capital: Capital to allocate (transferred from main)
+            capital: Capital to allocate. Defaults to play.deploy_config.capital.
 
         Returns:
             Sub-account UID
@@ -89,7 +89,14 @@ class PlayDeployer:
         play_id = play.id
         symbol = play.symbol_universe[0]
 
-        logger.info("Deploying play %s on %s with $%.2f capital", play_id, symbol, capital)
+        # Default capital from play's deploy config
+        if capital is None:
+            capital = play.deploy_config.capital if play.deploy_config else 10_000.0
+
+        # Use deploy_config for settle coin routing if available
+        settle_coin = play.deploy_config.settle_coin if play.deploy_config else "USDT"
+
+        logger.info("Deploying play %s on %s with $%.2f capital (%s)", play_id, symbol, capital, settle_coin)
 
         # 2. Pre-flight check
         can, reason = self._pm.can_deploy_play(symbol, capital)
@@ -111,9 +118,9 @@ class PlayDeployer:
         logger.info("Sub-account created: uid=%d, username=%s", uid, username)
 
         try:
-            # 5. Fund sub-account
-            sub_mgr.fund(uid, spec.settle_coin, capital)
-            logger.info("Funded sub uid=%d with %.2f %s", uid, capital, spec.settle_coin)
+            # 5. Fund sub-account (use deploy settle_coin, not instrument settle_coin)
+            sub_mgr.fund(uid, settle_coin, capital)
+            logger.info("Funded sub uid=%d with %.2f %s", uid, capital, settle_coin)
 
             # 6. Get sub's BybitClient
             sub_client = sub_mgr.get_client(uid)

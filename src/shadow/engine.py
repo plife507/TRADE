@@ -89,7 +89,11 @@ class ShadowEngine:
         self._state = ShadowEngineState.CREATED
         self._stats = ShadowEngineStats()
         self._prev_bar: Bar | None = None
-        self._initial_equity = self._config.initial_equity_usdt
+        # Equity source: Play's deploy_config.capital > ShadowPlayConfig fallback
+        if self._play.deploy_config:
+            self._initial_equity = self._play.deploy_config.capital
+        else:
+            self._initial_equity = self._initial_equity
 
         # External price overrides (from WS ticker)
         self._latest_mark_price: float | None = None
@@ -472,7 +476,7 @@ class ShadowEngine:
 
         sim = SimulatedExchange(
             symbol=symbol,
-            initial_capital=self._config.initial_equity_usdt,
+            initial_capital=self._initial_equity,
             leverage=leverage,
         )
 
@@ -491,7 +495,7 @@ class ShadowEngine:
         # the BacktestExchange/SimExchange. "shadow" mode skips execution (no-op).
         config = PlayEngineConfig(
             mode="backtest",
-            initial_equity=self._config.initial_equity_usdt,
+            initial_equity=self._initial_equity,
         )
 
         # LiveDataProvider for real-time indicators/structures
