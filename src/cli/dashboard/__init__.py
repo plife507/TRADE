@@ -1,6 +1,6 @@
 """Live dashboard package for play runner.
 
-Rich Live full-screen display with tabbed views for monitoring live/demo trading.
+Rich Live full-screen display with tabbed views for monitoring live trading.
 
 Keybindings:
     1-6     Switch tab (Overview / Indicators / Structures / Log / Play / Orders)

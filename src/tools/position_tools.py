@@ -99,7 +99,7 @@ def list_open_positions_tool(symbol: str | None = None, trading_env: str | None 
     
     Args:
         symbol: Optional symbol to filter (None for all positions)
-        trading_env: Optional trading environment ("demo" or "live") for validation
+        trading_env: Optional trading environment ("live") for validation
     
     Returns:
         ToolResult with data["positions"] containing list of position dicts
@@ -160,7 +160,7 @@ def get_position_detail_tool(symbol: str, trading_env: str | None = None) -> Too
     
     Args:
         symbol: Trading symbol (e.g., "BTCUSDT")
-        trading_env: Optional trading environment ("demo" or "live") for validation
+        trading_env: Optional trading environment ("live") for validation
     
     Returns:
         ToolResult with position data or error if no position exists
@@ -228,7 +228,7 @@ def set_stop_loss_tool(symbol: str, stop_price: float, trading_env: str | None =
     Args:
         symbol: Trading symbol
         stop_price: Stop loss price
-        trading_env: Optional trading environment ("demo" or "live") for validation
+        trading_env: Optional trading environment ("live") for validation
     
     Returns:
         ToolResult with success status
@@ -288,7 +288,7 @@ def remove_stop_loss_tool(symbol: str, trading_env: str | None = None) -> ToolRe
     
     Args:
         symbol: Trading symbol
-        trading_env: Optional trading environment ("demo" or "live") for validation
+        trading_env: Optional trading environment ("live") for validation
     
     Returns:
         ToolResult with success status
@@ -349,7 +349,7 @@ def set_take_profit_tool(symbol: str, take_profit_price: float, trading_env: str
     Args:
         symbol: Trading symbol
         take_profit_price: Take profit price
-        trading_env: Optional trading environment ("demo" or "live") for validation
+        trading_env: Optional trading environment ("live") for validation
     
     Returns:
         ToolResult with success status
@@ -409,7 +409,7 @@ def remove_take_profit_tool(symbol: str, trading_env: str | None = None) -> Tool
     
     Args:
         symbol: Trading symbol
-        trading_env: Optional trading environment ("demo" or "live") for validation
+        trading_env: Optional trading environment ("live") for validation
     
     Returns:
         ToolResult with success status
@@ -478,7 +478,7 @@ def set_position_tpsl_tool(
         take_profit: Take profit price (None to leave unchanged, 0 to remove)
         stop_loss: Stop loss price (None to leave unchanged, 0 to remove)
         tpsl_mode: "Full" (entire position) or "Partial"
-        trading_env: Optional trading environment ("demo" or "live") for validation
+        trading_env: Optional trading environment ("live") for validation
     
     Returns:
         ToolResult with success status
@@ -557,7 +557,7 @@ def set_trailing_stop_tool(
         symbol: Trading symbol
         trailing_distance: Trailing stop distance in price units (0 to remove)
         active_price: Price at which trailing becomes active (optional)
-        trading_env: Optional trading environment ("demo" or "live") for validation
+        trading_env: Optional trading environment ("live") for validation
     
     Returns:
         ToolResult with success status
@@ -630,7 +630,7 @@ def set_trailing_stop_by_percent_tool(symbol: str, percent: float, trading_env: 
     Args:
         symbol: Trading symbol
         percent: Trailing stop as percentage of current price (e.g., 1.5 for 1.5%)
-        trading_env: Optional trading environment ("demo" or "live") for validation
+        trading_env: Optional trading environment ("live") for validation
     
     Returns:
         ToolResult with success status
@@ -706,7 +706,7 @@ def close_position_tool(
     Args:
         symbol: Trading symbol
         cancel_conditional_orders: If True, cancel conditional TP orders first
-        trading_env: Optional trading environment ("demo" or "live") for validation
+        trading_env: Optional trading environment ("live") for validation
     
     Returns:
         ToolResult with close order details
@@ -776,7 +776,7 @@ def panic_close_all_tool(reason: str | None = None, trading_env: str | None = No
     
     Args:
         reason: Optional reason for the panic close (for logging)
-        trading_env: Optional trading environment ("demo" or "live") for validation
+        trading_env: Optional trading environment ("live") for validation
     
     Returns:
         ToolResult with summary of closed positions and cancelled orders

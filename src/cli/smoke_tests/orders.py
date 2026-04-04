@@ -1,7 +1,7 @@
 """
 Order-related smoke tests for TRADE trading bot.
 
-Tests all order types on DEMO account:
+Tests all order types:
 - Market orders (buy/sell)
 - Market orders with TP/SL
 - Limit orders (buy/sell)
@@ -56,7 +56,7 @@ console = Console()
 
 def run_comprehensive_order_smoke() -> int:
     """
-    Comprehensive test of ALL order types on DEMO account.
+    Comprehensive test of ALL order types.
 
     Tests:
     - Market orders (buy/sell)
@@ -73,7 +73,7 @@ def run_comprehensive_order_smoke() -> int:
     """
     console.print(Panel(
         "[bold magenta]COMPREHENSIVE ORDER SMOKE TEST[/]\n"
-        "[dim]Testing ALL order types on DEMO account[/]",
+        "[dim]Testing ALL order types[/]",
         border_style="magenta"
     ))
 
@@ -471,11 +471,6 @@ def run_live_check_smoke() -> int:
         active = data.get("active_trading", {})
         console.print(f"      Active Mode: {active.get('mode', 'N/A')}")
         console.print(f"      Base URL: {active.get('base_url', 'N/A')}")
-
-        # Check if we're actually in LIVE mode
-        if active.get("is_demo", True):
-            console.print(f"\n  [yellow]WARNING: Running in DEMO mode, not LIVE[/]")
-            console.print(f"  [yellow]Set BYBIT_USE_DEMO=false to test LIVE[/]")
     else:
         console.print(f"  [red]FAIL[/] {result.error}")
         failures += 1

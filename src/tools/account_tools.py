@@ -17,32 +17,37 @@ from ..utils.time_range import TimeRange, parse_time_window
 
 def get_account_balance_tool(trading_env: str | None = None) -> ToolResult:
     """
-    Get account balance information.
-    
+    Get UTA account balance (all coins, cross-collateral).
+
     Args:
-        trading_env: Optional trading environment ("demo" or "live") for validation
-    
+        trading_env: Optional trading environment ("live") for validation
+
     Returns:
         ToolResult with data containing:
-            - total: Total balance in USD
-            - available: Available balance for trading
-            - used: Balance currently in use (margin)
+            - equity: Total equity (wallet + unrealized PnL)
+            - wallet_balance: Wallet balance (excluding UPL)
+            - available: Available balance for new positions
+            - used: Initial margin in use
+            - margin_balance: Wallet + perp UPL
+            - maintenance_margin: Required maintenance margin
     """
     if error := validate_trading_env_or_error(trading_env):
         return error
-    
+
     try:
         exchange = _get_exchange_manager()
         balance = exchange.get_balance()
-        
+
         return ToolResult(
             success=True,
-            message=f"Balance: ${balance.get('total', 0):,.2f}",
+            message=f"Equity: ${balance.get('total', 0):,.2f} | Available: ${balance.get('available', 0):,.2f}",
             data={
-                "total": balance.get("total", 0),
+                "equity": balance.get("total", 0),
+                "wallet_balance": balance.get("wallet_balance", 0),
                 "available": balance.get("available", 0),
                 "used": balance.get("used", 0),
-                "raw": balance,
+                "margin_balance": balance.get("margin_balance", 0),
+                "maintenance_margin": balance.get("maintenance_margin", 0),
             },
             source="rest_api",
         )
@@ -58,7 +63,7 @@ def get_total_exposure_tool(trading_env: str | None = None) -> ToolResult:
     Get total position exposure across all positions.
     
     Args:
-        trading_env: Optional trading environment ("demo" or "live") for validation
+        trading_env: Optional trading environment ("live") for validation
     
     Returns:
         ToolResult with data containing exposure in USD
@@ -88,7 +93,7 @@ def get_account_info_tool(trading_env: str | None = None) -> ToolResult:
     Get detailed account information (margin mode, etc.).
     
     Args:
-        trading_env: Optional trading environment ("demo" or "live") for validation
+        trading_env: Optional trading environment ("live") for validation
     
     Returns:
         ToolResult with account configuration details
@@ -125,7 +130,7 @@ def get_portfolio_snapshot_tool(trading_env: str | None = None) -> ToolResult:
     and risk level assessment.
     
     Args:
-        trading_env: Optional trading environment ("demo" or "live") for validation
+        trading_env: Optional trading environment ("live") for validation
     
     Returns:
         ToolResult with comprehensive portfolio data
@@ -201,7 +206,7 @@ def get_order_history_tool(
         end_ms: End timestamp in milliseconds (used if window not provided)
         symbol: Filter by symbol (None for all)
         limit: Maximum number of orders to return (1-50)
-        trading_env: Optional trading environment ("demo" or "live") for validation
+        trading_env: Optional trading environment ("live") for validation
     
     Returns:
         ToolResult with list of orders and time_range metadata
@@ -263,7 +268,7 @@ def get_closed_pnl_tool(
         end_ms: End timestamp in milliseconds (used if window not provided)
         symbol: Filter by symbol (None for all)
         limit: Maximum number of records to return (1-50)
-        trading_env: Optional trading environment ("demo" or "live") for validation
+        trading_env: Optional trading environment ("live") for validation
     
     Returns:
         ToolResult with closed P&L data, total, and time_range metadata
@@ -337,7 +342,7 @@ def get_transaction_log_tool(
         log_type: TRADE, SETTLEMENT, TRANSFER_IN, TRANSFER_OUT,
                  DELIVERY, LIQUIDATION, BONUS, FEE_REFUND, INTEREST
         limit: Maximum records (1-50)
-        trading_env: Optional trading environment ("demo" or "live") for validation
+        trading_env: Optional trading environment ("live") for validation
     
     Returns:
         ToolResult with transaction log data and time_range metadata
@@ -390,7 +395,7 @@ def get_collateral_info_tool(currency: str | None = None, trading_env: str | Non
     
     Args:
         currency: Specific currency (None for all)
-        trading_env: Optional trading environment ("demo" or "live") for validation
+        trading_env: Optional trading environment ("live") for validation
     
     Returns:
         ToolResult with collateral info (rates, limits, status)
@@ -429,7 +434,7 @@ def set_collateral_coin_tool(coin: str, enabled: bool, trading_env: str | None =
     Args:
         coin: Coin name (e.g., BTC, ETH, USDT)
         enabled: True to enable, False to disable
-        trading_env: Optional trading environment ("demo" or "live") for validation
+        trading_env: Optional trading environment ("live") for validation
     
     Returns:
         ToolResult with success status
@@ -484,7 +489,7 @@ def get_borrow_history_tool(
         end_ms: End timestamp in milliseconds (used if window not provided)
         currency: Filter by currency (e.g., USDT, BTC)
         limit: Maximum records (1-50)
-        trading_env: Optional trading environment ("demo" or "live") for validation
+        trading_env: Optional trading environment ("live") for validation
     
     Returns:
         ToolResult with borrow history records and time_range metadata
@@ -534,7 +539,7 @@ def get_coin_greeks_tool(base_coin: str | None = None, trading_env: str | None =
     
     Args:
         base_coin: Base coin filter (BTC, ETH, etc.)
-        trading_env: Optional trading environment ("demo" or "live") for validation
+        trading_env: Optional trading environment ("live") for validation
     
     Returns:
         ToolResult with coin greeks data
@@ -568,7 +573,7 @@ def set_account_margin_mode_tool(portfolio_margin: bool, trading_env: str | None
     
     Args:
         portfolio_margin: True for Portfolio Margin, False for Regular Margin
-        trading_env: Optional trading environment ("demo" or "live") for validation
+        trading_env: Optional trading environment ("live") for validation
     
     Returns:
         ToolResult with success status
@@ -606,7 +611,7 @@ def get_transferable_amount_tool(coin: str, trading_env: str | None = None) -> T
     
     Args:
         coin: Coin name (e.g., USDT, BTC)
-        trading_env: Optional trading environment ("demo" or "live") for validation
+        trading_env: Optional trading environment ("live") for validation
     
     Returns:
         ToolResult with transferable amount

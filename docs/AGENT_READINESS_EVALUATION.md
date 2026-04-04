@@ -53,7 +53,7 @@ making them parseable by agents without screen-scraping.
 ### What an Agent Can Do Today
 
 - Run backtests, read structured results
-- Start/stop/pause/resume demo plays (headless mode)
+- Start/stop/pause/resume shadow plays (headless mode)
 - Query account balance, positions, orders
 - Place/amend/cancel orders
 - Sync/query/heal market data (DuckDB)
@@ -128,7 +128,7 @@ Full 62-test end-to-end re-run not yet completed. Individual test verification d
 ### Unverified Live Path (P12 Remaining)
 
 These items were coded but never manually verified:
-- Run demo play 10+ minutes — confirm NO "Signal execution blocked" warnings
+- Run shadow play 10+ minutes — confirm NO "Signal execution blocked" warnings
 - Confirm `is_websocket_healthy()` returns True throughout
 - Run play A -> stop -> play B -> verify no stale symbols leak
 - Health check shows correct tri-state WS display
@@ -148,7 +148,7 @@ These items were coded but never manually verified:
 
 | Workflow | CLI Commands | Status |
 |----------|-------------|--------|
-| **Deploy a play** | `validate pre-live --play X` then `play run --headless --mode demo` | Ready |
+| **Deploy a play** | `validate pre-live --play X` then `play run --headless --mode shadow` | Ready |
 | **Monitor** | `play status --json` / `play watch --json` | Ready |
 | **Signal execution** | Automatic (engine handles internally) | Ready |
 | **Check P&L** | `account balance --json` / `account pnl --json` | Ready |
@@ -156,19 +156,19 @@ These items were coded but never manually verified:
 | **Data freshness** | `data status --json` / `data sync --json` | Ready |
 | **Health checks** | `health check --json` | Ready |
 | **Position management** | `position list --json` / `position close --json` | Ready |
-| **Multi-play orchestration** | Start play A + play B (different symbols) | Ready (1 demo/symbol limit) |
+| **Multi-play orchestration** | Start play A + play B (different symbols) | Ready |
 | **Strategy rotation** | Stop play A -> start play B (wait 15s cooldown) | Ready |
 | **Backtest before deploy** | `backtest run --play X --synthetic --json` | Ready |
 | **Log analysis** | `play logs --instance X` | Wired but untested |
 
-### Example Agent Session (Demo)
+### Example Agent Session (Shadow)
 
 ```bash
 # 1. Validate play before deployment
 python trade_cli.py validate pre-live --play my_strategy.yml --json
 
-# 2. Start headless demo
-python trade_cli.py play run --play my_strategy.yml --mode demo --headless &
+# 2. Start headless shadow
+python trade_cli.py play run --play my_strategy.yml --mode shadow --headless &
 # First stdout line: {"event": "started", "instance_id": "...", ...}
 
 # 3. Monitor loop
@@ -222,7 +222,7 @@ python trade_cli.py play stop --all --force
 | Instance safety | **95%** | 8/8 pass | Cross-process locking, PID kill, cooldown, headless — all solid |
 | Live trading safety | **80%** | 8/8 features pass | GAP-2 fixed (REST fallback). 3 minor items remain. |
 | Agent workflows | **90%** | 6/6 pass | headless, watch --json, stop --all/--force, logs — all working |
-| **Overall** | **~88%** | | **Demo-mode agent operation is ready. Live-money is 1 session away.** |
+| **Overall** | **~88%** | | **Shadow-mode agent operation is ready. Live-money is 1 session away.** |
 
 ### Minor gaps for 100%
 
@@ -237,11 +237,11 @@ python trade_cli.py play stop --all --force
 
 ## Recommended Path to 100%
 
-### Session A: Demo Validation + Live Prep (~2h)
+### Session A: Shadow Validation + Live Prep (~2h)
 
-Goal: Verify demo mode end-to-end and fix remaining blockers.
+Goal: Verify shadow mode end-to-end and fix remaining blockers.
 
-1. Run 10min demo play — confirm NO "Signal execution blocked" warnings
+1. Run 10min shadow play — confirm NO "Signal execution blocked" warnings
 2. **DATA-011**: Implement active pybit WS reconnect (or detect-and-restart play)
 3. Run `validate pre-live --play X` on a real play
 4. Run `validate exchange` to confirm exchange integration
@@ -253,7 +253,7 @@ Goal: Verify demo mode end-to-end and fix remaining blockers.
 Goal: First real-money trade.
 
 1. Define live parity rubric (backtest as gold standard, acceptable deviation thresholds)
-2. 24h demo validation run (play running overnight, check next day)
+2. 24h shadow validation run (play running overnight, check next day)
 3. First live trade: `python trade_cli.py play run --play X --mode live --confirm`
 4. Monitor via `play status --json` + `account pnl --json`
 

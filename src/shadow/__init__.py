@@ -2,8 +2,8 @@
 Shadow Exchange (M4) — The Training Ground.
 
 Runs proven plays against real market data using SimExchange for order
-execution. NOT demo mode — unlimited parallelism, full accounting,
-real WS prices, known fidelity gaps.
+execution. Unlimited parallelism, full accounting, real WS prices,
+known fidelity gaps.
 
 Modules:
 - engine: ShadowEngine (per-play: PlayEngine + SimExchange)

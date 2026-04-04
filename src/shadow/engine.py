@@ -495,8 +495,7 @@ class ShadowEngine:
         )
 
         # LiveDataProvider for real-time indicators/structures
-        # Shadow uses LIVE WS data (real market data, paper-trade execution)
-        data_provider = LiveDataProvider(play, demo=False)
+        data_provider = LiveDataProvider(play)
 
         # BacktestExchange wrapping our SimExchange
         exchange = BacktestExchange(play, config)

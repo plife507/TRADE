@@ -16,14 +16,12 @@ You are a security engineer specializing in trading system security. You focus o
 
 - [ ] API keys from environment variables only
 - [ ] No hardcoded credentials
-- [ ] Demo/live key separation enforced
 - [ ] Key source logged (not the key itself)
 
 ### Mode Validation
 
-- [ ] `TRADING_MODE` + `BYBIT_USE_DEMO` combination validated
-- [ ] Invalid combinations blocked at startup
-- [ ] Demo mode is default for safety
+- [ ] Live mode requires `confirm_live=True` + API key validation
+- [ ] Shadow mode uses live data but executes no real orders
 
 ### Order Execution Safety
 
@@ -32,14 +30,12 @@ You are a security engineer specializing in trading system security. You focus o
 - [ ] Leverage limits respected
 - [ ] Panic close functionality working
 
-### Data Environment Separation
+### API Key Architecture
 
-| Leg | Purpose | Key Variable |
-|-----|---------|--------------|
-| Trade LIVE | Real money | `BYBIT_LIVE_API_KEY` |
-| Trade DEMO | Fake money | `BYBIT_DEMO_API_KEY` |
-| Data LIVE | Backtest data | `BYBIT_LIVE_DATA_API_KEY` |
-| Data DEMO | Demo validation | `BYBIT_DEMO_DATA_API_KEY` |
+| Key | Purpose | Variable |
+|-----|---------|----------|
+| Data (RO) | Market/historical data | `BYBIT_LIVE_DATA_API_KEY` |
+| Trading (RW) | Live order execution | `BYBIT_LIVE_API_KEY` |
 
 ### Simulator Security
 
@@ -55,13 +51,12 @@ You are a security engineer specializing in trading system security. You focus o
 | `src/core/risk_manager.py` | Risk checks |
 | `src/core/safety.py` | Panic close, safety systems |
 | `src/core/order_executor.py` | Order placement |
-| `src/engine/play_engine.py` | Engine mode (backtest/demo/live) |
+| `src/engine/play_engine.py` | Engine mode (backtest/shadow/live) |
 | `src/cli/validate.py` | Pre-live validation gates |
 
 ## Security Checklist
 
 ### Authentication
-- [ ] Demo mode tested before live
 - [ ] Rate limiting respected
 - [ ] WebSocket only for GlobalRiskView (not trading)
 

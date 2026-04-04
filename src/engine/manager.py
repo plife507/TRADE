@@ -1,7 +1,7 @@
 """
 Multi-Instance Engine Manager.
 
-Enables concurrent engine instances for live, demo, and backtest modes.
+Enables concurrent engine instances for live, shadow, and backtest modes.
 Enforces instance limits and provides state isolation.
 
 Cross-process safety:
@@ -11,7 +11,6 @@ Cross-process safety:
 
 Instance Limits:
 - Max 1 live instance (safety)
-- Max 1 demo per symbol
 - Max 1 backtest at a time (DuckDB limitation)
 
 Usage:
@@ -19,8 +18,8 @@ Usage:
 
     manager = EngineManager.get_instance()
 
-    # Start demo trading
-    instance_id = await manager.start(play, mode="demo")
+    # Start live trading
+    instance_id = await manager.start(play, mode="live")
 
     # List running instances
     instances = manager.list()
@@ -68,7 +67,6 @@ _INSTANCE_COOLDOWN_SECONDS = 15.0  # Post-stop cooldown before same slot reopens
 class InstanceMode(str, Enum):
     """Engine instance mode."""
     LIVE = "live"
-    DEMO = "demo"
     BACKTEST = "backtest"
     SHADOW = "shadow"
 
@@ -145,7 +143,6 @@ class EngineManager:
 
     Enforces instance limits:
     - Max 1 live instance (safety - prevents multiple real-money bots)
-    - Max 1 demo per symbol (prevents duplicate signals)
     - Max 1 backtest at a time (DuckDB sequential access limitation)
 
     Cross-process safety:
@@ -165,13 +162,11 @@ class EngineManager:
 
         # Instance limits
         self._max_live = 1
-        self._max_demo_per_symbol = 1
         self._max_backtest = 1
 
         # Track counts for fast limit checking
         self._live_count = 0
         self._backtest_count = 0
-        self._demo_by_symbol: dict[str, int] = {}
 
         # Cross-process instance tracking (project-relative, not user profile)
         from ..config.constants import INSTANCES_DIR
@@ -297,7 +292,7 @@ class EngineManager:
             result.append(_DiskInstance(
                 instance_id=iid,
                 symbol=data.get("symbol", "?"),
-                mode=data.get("mode", "demo"),
+                mode=data.get("mode", "live"),
                 pid=pid,
                 status=status,
                 cooldown_until=cooldown_until,
@@ -490,30 +485,6 @@ class EngineManager:
                     f"Stop existing live instance first.{cooldown_info}"
                 )
 
-        elif mode is InstanceMode.DEMO:
-            # Count: in-memory + cross-process demo for same symbol
-            in_memory_demo = self._demo_by_symbol.get(symbol, 0)
-            cross_demo = sum(
-                1 for d in cross_process
-                if d.mode == "demo" and d.symbol == symbol
-            )
-            total_demo = in_memory_demo + cross_demo
-            if total_demo >= self._max_demo_per_symbol:
-                running = self._find_running_instance(cross_process, "demo", symbol)
-                if running:
-                    raise ValueError(
-                        f"Instance already running for {symbol} (PID {running.pid}). "
-                        f"Use 'play stop' first."
-                    )
-                cooldown_info = self._cooldown_info(
-                    [d for d in cross_process if d.symbol == symbol],
-                    "demo",
-                )
-                raise ValueError(
-                    f"Demo instance limit for {symbol} reached ({self._max_demo_per_symbol}). "
-                    f"Stop existing demo instance first.{cooldown_info}"
-                )
-
         elif mode is InstanceMode.BACKTEST:
             total_bt = self._backtest_count + sum(
                 1 for d in cross_process if d.mode == "backtest"
@@ -560,10 +531,6 @@ class EngineManager:
         mode = InstanceMode(mode)
         if mode is InstanceMode.LIVE:
             self._live_count += delta
-        elif mode is InstanceMode.DEMO:
-            self._demo_by_symbol[symbol] = self._demo_by_symbol.get(symbol, 0) + delta
-            if self._demo_by_symbol[symbol] <= 0:
-                del self._demo_by_symbol[symbol]
         elif mode is InstanceMode.BACKTEST:
             self._backtest_count += delta
 
@@ -574,7 +541,7 @@ class EngineManager:
     async def start(
         self,
         play: "Play",
-        mode: Literal["live", "demo", "shadow", "backtest"],
+        mode: Literal["live", "shadow", "backtest"],
         on_signal: "Callable | None" = None,
     ) -> str:
         """
@@ -631,7 +598,7 @@ class EngineManager:
                 from .factory import _build_config_from_play
                 config = _build_config_from_play(
                     play, mode,
-                    persist_state=(mode in ("live", "demo")),
+                    persist_state=(mode == "live"),
                     state_save_interval=10,
                 )
 
@@ -639,9 +606,8 @@ class EngineManager:
                 from .adapters.live import LiveDataProvider, LiveExchange
                 from .adapters.state import FileStateStore
 
-                demo = (mode == "demo")
-                data_provider = LiveDataProvider(play, demo=demo)
-                exchange = LiveExchange(play, config, demo=demo)
+                data_provider = LiveDataProvider(play)
+                exchange = LiveExchange(play, config)
                 state_store = FileStateStore()
 
                 # Create engine
@@ -870,7 +836,7 @@ class EngineManager:
             # Capture data for cooldown file before we potentially lose it
             play_id = data.get("play_id", "?")
             symbol = data.get("symbol", "?")
-            mode = data.get("mode", "demo")
+            mode = data.get("mode", "live")
             started_at = data.get("started_at", utc_now().isoformat())
 
             if not self._is_pid_alive(pid):

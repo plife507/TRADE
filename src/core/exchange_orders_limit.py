@@ -32,7 +32,6 @@ def limit_buy(
     from . import exchange_websocket as ws
 
     try:
-        manager._validate_trading_operation()
         ws.ensure_symbol_tracked(manager, symbol)
 
         price = inst.round_price(manager, symbol, price)
@@ -79,7 +78,6 @@ def limit_sell(
     from . import exchange_websocket as ws
 
     try:
-        manager._validate_trading_operation()
         ws.ensure_symbol_tracked(manager, symbol)
 
         price = inst.round_price(manager, symbol, price)
@@ -130,7 +128,6 @@ def limit_buy_with_tpsl(
     from . import exchange_websocket as ws
 
     try:
-        manager._validate_trading_operation()
         ws.ensure_symbol_tracked(manager, symbol)
 
         price = inst.round_price(manager, symbol, price)
@@ -186,7 +183,6 @@ def limit_sell_with_tpsl(
     from . import exchange_websocket as ws
 
     try:
-        manager._validate_trading_operation()
         ws.ensure_symbol_tracked(manager, symbol)
 
         price = inst.round_price(manager, symbol, price)

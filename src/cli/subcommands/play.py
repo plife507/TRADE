@@ -18,7 +18,6 @@ def handle_play_run(args) -> int:
 
     Modes:
         backtest: Historical data simulation
-        demo: Real-time data with Bybit demo API (fake money)
         live: Real-time data with Bybit live API (real money)
         shadow: Real-time data with signal logging only (no execution)
     """
@@ -53,10 +52,10 @@ def handle_play_run(args) -> int:
         console.print(f"[red]Failed to load Play: {e}[/]")
         return 1
 
-    # G15.1: Auto-run pre-live validation gate for live and demo modes (after play resolution)
-    if mode in ("live", "demo"):
+    # G15.1: Auto-run pre-live validation gate for live mode (after play resolution)
+    if mode == "live":
         from src.cli.validate import run_validation, Tier
-        console.print(f"[cyan]Running pre-live validation gate ({mode} mode)...[/]")
+        console.print(f"[cyan]Running pre-live validation gate (live mode)...[/]")
         gate_result = run_validation(Tier.PRE_LIVE, play_id=play.id)
         if gate_result != 0:
             console.print(f"[bold red]Pre-live validation FAILED. Cannot start {mode} trading.[/]")
@@ -84,7 +83,7 @@ def handle_play_run(args) -> int:
     ))
 
     from src.utils.debug import is_debug_enabled
-    if is_debug_enabled() and mode in ("demo", "live"):
+    if is_debug_enabled() and mode == "live":
         stderr_console.print(Panel(
             "[bold yellow]DEBUG MODE ACTIVE[/]\n"
             "[dim]Full tracebacks, indicator snapshots, and rule evaluation details enabled.\n"
@@ -116,7 +115,7 @@ def handle_play_run(args) -> int:
                 console.print(f"[red]Failed to create engine: {e}[/]")
             return 1
         return _run_play_shadow(engine, play, args)
-    elif mode in ("demo", "live"):
+    elif mode == "live":
         # C5: Manager creates the engine -- do NOT create one here via factory
         # (the old code created a factory engine that was thrown away)
         return _run_play_live(play, args, manager=EngineManager.get_instance())
@@ -187,7 +186,7 @@ def _run_play_shadow(engine, play, args) -> int:
 
 
 def _run_play_live(play, args, manager=None) -> int:
-    """Run Play in live or demo mode via EngineManager.
+    """Run Play in live mode via EngineManager.
 
     Supports two UI modes:
     - Dashboard (default): Rich Live dashboard in main thread
@@ -218,7 +217,7 @@ def _run_play_live_headless(play, args, manager=None) -> int:
     if hasattr(sys.stdout, "reconfigure"):
         sys.stdout.reconfigure(line_buffering=True)  # type: ignore[attr-defined]
 
-    mode: Literal["live", "demo", "shadow", "backtest"] = args.mode
+    mode: Literal["live", "shadow", "backtest"] = args.mode
     if manager is None:
         manager = EngineManager.get_instance()
 

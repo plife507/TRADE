@@ -37,6 +37,7 @@ from ...utils.logger import get_module_logger
 
 if TYPE_CHECKING:
     from ...backtest.play import Play
+    from ...exchanges.bybit_client import BybitClient
     from ...data.realtime_state import RealtimeState
     from ...data.realtime_bootstrap import RealtimeBootstrap
     from src.structures import TFIncrementalState
@@ -587,16 +588,14 @@ class LiveDataProvider:
     Integrates with existing RealtimeBootstrap/RealtimeState infrastructure.
     """
 
-    def __init__(self, play: "Play", demo: bool = True):
+    def __init__(self, play: "Play"):
         """
         Initialize live data provider.
 
         Args:
             play: Play instance with feature specs
-            demo: If True, use demo WebSocket endpoint
         """
         self._play = play
-        self._demo = demo
         self._symbol = play.symbol_universe[0]
 
         # 3-Feed + Exec Role System
@@ -669,7 +668,7 @@ class LiveDataProvider:
         self._high_tf_ready: bool = False
 
         # Environment for multi-TF buffer lookup
-        self._env: DataEnv = "demo" if demo else "live"
+        self._env: DataEnv = "live"
 
         # Multi-TF mode flag
         self._multi_tf_mode = (
@@ -1700,32 +1699,20 @@ class LiveExchange:
     Integrates with existing OrderExecutor and PositionManager.
     """
 
-    def __init__(self, play: "Play", config: PlayEngineConfig, demo: bool = True):
+    def __init__(self, play: "Play", config: PlayEngineConfig, client: "BybitClient | None" = None):
         """
         Initialize live exchange adapter.
 
         Args:
             play: Play instance
             config: Engine configuration
-            demo: If True, use demo API
-
-        Raises:
-            ValueError: If demo flag doesn't match global config
+            client: Optional BybitClient for sub-account deployment.
+                    If None, ExchangeManager creates default from config.
         """
-        # C4: Verify demo flag matches global config
-        from ...config.config import get_config
-        global_config = get_config()
-        if demo != global_config.bybit.use_demo:
-            raise ValueError(
-                f"LiveExchange demo={demo} conflicts with config "
-                f"BYBIT_USE_DEMO={global_config.bybit.use_demo}. "
-                f"These must match to prevent accidental live/demo mismatch."
-            )
-
         self._play = play
         self._config = config
-        self._demo = demo
         self._symbol = play.symbol_universe[0]
+        self._injected_client = client  # For sub-account deployment
 
         # These will be initialized during connect
         self._order_executor = None
@@ -1750,7 +1737,7 @@ class LiveExchange:
         self._start_ms: int = _now_ms
 
         logger.info(
-            f"LiveExchange initialized: {self._symbol} demo={demo}"
+            f"LiveExchange initialized: {self._symbol}"
         )
 
     def _is_ws_data_fresh(self, max_age_s: float = 60.0) -> bool:
@@ -1765,8 +1752,8 @@ class LiveExchange:
         # Private WS must be connected
         if not self._realtime_state.is_private_ws_connected:
             return False
-        # Wallet data must exist and not be stale
-        if self._realtime_state.is_wallet_stale(max_age_seconds=max_age_s):
+        # Account metrics must exist and not be stale (coin-agnostic)
+        if self._realtime_state.is_account_metrics_stale(max_age_seconds=max_age_s):
             return False
         return True
 
@@ -1787,8 +1774,11 @@ class LiveExchange:
             # Get realtime state for account data
             self._realtime_state = get_realtime_state()
 
-            # Initialize exchange manager
-            self._exchange_manager = ExchangeManager()
+            # Initialize exchange manager (use injected client for sub-account deployment)
+            if self._injected_client:
+                self._exchange_manager = ExchangeManager(client=self._injected_client)
+            else:
+                self._exchange_manager = ExchangeManager()
 
             # Bootstrap balance from REST FIRST so risk config uses real balance
             self._bootstrap_balance_from_rest()
@@ -1906,7 +1896,7 @@ class LiveExchange:
     def _reconcile_config_with_exchange(self) -> None:
         """Override Play config with exchange reality.
 
-        Play YAML is for backtesting. In live/demo the exchange is
+        Play YAML is for backtesting. In live the exchange is
         the source of truth for: equity, fees, leverage limits, MMR,
         and minimum trade size.
 
@@ -1992,46 +1982,33 @@ class LiveExchange:
 
     def _apply_leverage_and_margin(self) -> None:
         """
-        Set leverage and margin mode on the exchange from Play config.
+        Set leverage on the exchange from Play config.
 
-        Called during connect(). Raises RuntimeError if leverage cannot be
-        set — the runner MUST NOT start with incorrect leverage.
+        In UTA 2.0, margin mode is account-level (REGULAR_MARGIN/ISOLATED_MARGIN),
+        not per-symbol. The play's margin_mode ("isolated_usdt") is a backtest sim
+        concept. Live UTA uses whatever the account margin mode is set to.
+
+        Called during connect(). Raises RuntimeError if leverage cannot be set.
         """
         assert self._exchange_manager is not None
         account = self._play.account
         assert account is not None, "Play.account is required for live trading"
 
         leverage = int(account.max_leverage)
-        margin_mode = account.margin_mode  # e.g. "isolated_usdt", "cross"
 
-        # Map play margin_mode to Bybit API values
-        if "cross" in margin_mode.lower():
-            bybit_mode = "REGULAR_MARGIN"
-        else:
-            bybit_mode = "ISOLATED_MARGIN"
-
-        # Set margin mode + leverage.
-        # Bybit demo API does not support switch_margin_mode (error 10032).
-        # In demo mode, skip margin mode switch and just set leverage.
+        # Set leverage only (margin mode is account-level in UTA 2.0)
         try:
-            self._exchange_manager.set_margin_mode(
-                self._symbol, bybit_mode, leverage=float(leverage)
-            )
-            logger.info(
-                f"Exchange configured: {self._symbol} "
-                f"margin={bybit_mode} leverage={leverage}x"
-            )
-        except RuntimeError as e:
-            if self._demo and "10032" in str(e):
-                logger.warning(
-                    f"Demo API does not support margin mode switch for {self._symbol}, "
-                    f"setting leverage only ({leverage}x)"
-                )
-                self._exchange_manager.set_leverage(
-                    self._symbol, leverage
-                )
+            self._exchange_manager.set_leverage(self._symbol, leverage)
+            logger.info("Exchange configured: %s leverage=%dx", self._symbol, leverage)
+        except Exception as e:
+            err_str = str(e).lower()
+            # "not modified" = already at this leverage
+            if "not modified" in err_str:
+                logger.info("Leverage already set to %dx for %s", leverage, self._symbol)
             else:
-                raise
+                raise RuntimeError(
+                    f"Failed to set leverage {leverage}x for {self._symbol}: {e}"
+                ) from e
 
     async def disconnect(self) -> None:
         """Disconnect from exchange."""
@@ -2208,20 +2185,15 @@ class LiveExchange:
         return None
 
     def get_balance(self) -> float:
-        """Get available balance. Uses last known value on failure (never initial_equity)."""
-        # Try RealtimeState first if data is fresh
+        """Get available balance (UTA account-wide, all coins cross-collateral)."""
+        # AccountMetrics is THE source — no per-coin fallback
         if self._realtime_state and self._is_ws_data_fresh():
             metrics = self._realtime_state.get_account_metrics()
             if metrics:
                 self._last_known_balance = metrics.total_available_balance
                 return self._last_known_balance
 
-            wallet = self._realtime_state.get_wallet("USDT")
-            if wallet:
-                self._last_known_balance = wallet.available_balance
-                return self._last_known_balance
-
-        # Fall back to REST
+        # REST fallback (get_balance now returns UTA-wide totals)
         if self._exchange_manager:
             try:
                 balance = self._exchange_manager.get_balance()
@@ -2229,13 +2201,13 @@ class LiveExchange:
                     self._last_known_balance = balance["available"]
                     return self._last_known_balance
             except Exception as e:
-                logger.error("Failed to get balance from exchange, using last known $%.2f: %s", self._last_known_balance, e)
+                logger.error("Failed to get balance, using last known $%.2f: %s", self._last_known_balance, e)
 
         return self._last_known_balance
 
     def get_equity(self) -> float:
-        """Get total equity. Uses last known value on failure (never initial_equity)."""
-        # Try RealtimeState first if data is fresh
+        """Get total equity (UTA account-wide, all coins cross-collateral)."""
+        # AccountMetrics is THE source — no per-coin fallback
         if self._realtime_state and self._is_ws_data_fresh():
             metrics = self._realtime_state.get_account_metrics()
             if metrics:
@@ -2243,13 +2215,7 @@ class LiveExchange:
                 self._equity_stale_count = 0
                 return self._last_known_equity
 
-            wallet = self._realtime_state.get_wallet("USDT")
-            if wallet:
-                self._last_known_equity = wallet.equity
-                self._equity_stale_count = 0
-                return self._last_known_equity
-
-        # Fall back to REST
+        # REST fallback
         if self._exchange_manager:
             try:
                 balance = self._exchange_manager.get_balance()
@@ -2260,8 +2226,8 @@ class LiveExchange:
             except Exception as e:
                 self._equity_stale_count += 1
                 logger.error(
-                    f"Failed to get equity from exchange (stale count: {self._equity_stale_count}), "
-                    f"using last known ${self._last_known_equity:.2f}: {e}"
+                    "Failed to get equity (stale count: %d), using last known $%.2f: %s",
+                    self._equity_stale_count, self._last_known_equity, e,
                 )
 
         return self._last_known_equity
@@ -2389,10 +2355,9 @@ class LiveExchange:
                     symbol=self._symbol,
                 )
             else:
-                # H-E4: Partial close — validate trading state and WS tracking first
+                # H-E4: Partial close — ensure WS tracking first
                 from ...core.exchange_manager import OrderResult as ExchangeOrderResult
                 from ...core import exchange_websocket as ws
-                self._exchange_manager._validate_trading_operation()
                 ws.ensure_symbol_tracked(self._exchange_manager, self._symbol)
                 raw = self._exchange_manager.bybit.create_order(
                     symbol=self._symbol,

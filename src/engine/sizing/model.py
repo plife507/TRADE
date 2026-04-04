@@ -136,7 +136,7 @@ class SizingModel:
     Unified position sizing model for all TRADE engines.
 
     This class contains the sizing logic ported from SimulatedRiskManager.
-    Used by PlayEngine for all modes (backtest, demo, live).
+    Used by PlayEngine for all modes (backtest, live, shadow).
 
     Usage:
         model = SizingModel(config)

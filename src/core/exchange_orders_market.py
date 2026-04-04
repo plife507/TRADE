@@ -67,7 +67,6 @@ def market_buy(manager: "ExchangeManager", symbol: str, usd_amount: float, reduc
         return OrderResult(success=False, error=f"Invalid usd_amount: {usd_amount} (must be > 0)")
 
     try:
-        manager._validate_trading_operation()
         ws.ensure_symbol_tracked(manager, symbol)
 
         quote_price = manager.get_price(symbol)
@@ -110,7 +109,6 @@ def market_sell(manager: "ExchangeManager", symbol: str, usd_amount: float, redu
         return OrderResult(success=False, error=f"Invalid usd_amount: {usd_amount} (must be > 0)")
 
     try:
-        manager._validate_trading_operation()
         ws.ensure_symbol_tracked(manager, symbol)
 
         quote_price = manager.get_price(symbol)
@@ -189,7 +187,6 @@ def market_buy_with_tpsl(
         return OrderResult(success=False, error=f"Invalid usd_amount: {usd_amount} (must be > 0)")
 
     try:
-        manager._validate_trading_operation()
         ws.ensure_symbol_tracked(manager, symbol)
 
         quote_price = manager.get_price(symbol)
@@ -247,7 +244,6 @@ def market_sell_with_tpsl(
         return OrderResult(success=False, error=f"Invalid usd_amount: {usd_amount} (must be > 0)")
 
     try:
-        manager._validate_trading_operation()
         ws.ensure_symbol_tracked(manager, symbol)
 
         quote_price = manager.get_price(symbol)

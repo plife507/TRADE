@@ -1,7 +1,7 @@
 """
 Price Source Protocol.
 
-Unified interface for backtest/demo/live price feeds.
+Unified interface for backtest/live price feeds.
 Engine uses PriceSource to abstract away data origin.
 
 Architecture Principle: Pure Protocol
@@ -63,7 +63,6 @@ class PriceSource(Protocol):
 
     Unified interface for:
     - Backtest: Historical data from DuckDB
-    - Demo: Demo API WebSocket
     - Live: Live API WebSocket
 
     All implementations must be stateless data fetchers.

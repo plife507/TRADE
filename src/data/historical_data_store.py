@@ -401,45 +401,21 @@ class HistoricalDataStore:
         self.config = get_config()
         self.logger = get_module_logger(__name__)
         
-        # Select API and credentials based on data environment
-        # - backtest: Use LIVE API (most accurate historical data for backtests)
-        # - live: Use LIVE API (real-time warm-up for live trading)
-        # - demo: Use DEMO API (paper trading data feed)
-        if self.env in ("live", "backtest"):
-            # LIVE/BACKTEST environment: use LIVE API with dedicated data credentials
-            # Backtest uses live data because it's more accurate for historical analysis
-            api_key, api_secret = self.config.bybit.get_live_data_credentials()
-            use_demo_api = False
-            api_name = "LIVE"
-            api_url = "api.bybit.com"
+        # All environments use LIVE API for historical data
+        api_key, api_secret = self.config.bybit.get_live_data_credentials()
 
-            if not api_key or not api_secret:
-                self.logger.error(
-                    "MISSING REQUIRED KEY: BYBIT_LIVE_DATA_API_KEY/SECRET not configured! "
-                    f"Historical {self.env.upper()} data sync requires LIVE data API access. "
-                    "No fallback to trading keys."
-                )
-            key_source = "BYBIT_LIVE_DATA_API_KEY" if api_key else "MISSING"
-        else:
-            # DEMO environment: use DEMO API with dedicated DEMO data credentials
-            api_key, api_secret = self.config.bybit.get_demo_data_credentials()
-            use_demo_api = True
-            api_name = "DEMO"
-            api_url = "api-demo.bybit.com"
+        if not api_key or not api_secret:
+            self.logger.error(
+                "MISSING REQUIRED KEY: BYBIT_LIVE_DATA_API_KEY/SECRET not configured! "
+                f"Historical {self.env.upper()} data sync requires LIVE data API access. "
+                "No fallback to trading keys."
+            )
+        key_source = "BYBIT_LIVE_DATA_API_KEY" if api_key else "MISSING"
 
-            if not api_key or not api_secret:
-                self.logger.error(
-                    "MISSING REQUIRED KEY: BYBIT_DEMO_DATA_API_KEY/SECRET not configured! "
-                    "Historical DEMO data sync requires DEMO data API access. "
-                    "No fallback to trading keys."
-                )
-            key_source = "BYBIT_DEMO_DATA_API_KEY" if api_key else "MISSING"
-        
-        # Initialize client with appropriate API endpoint
+        # Initialize client
         self.client = BybitClient(
             api_key=api_key if api_key else None,
             api_secret=api_secret if api_secret else None,
-            use_demo=use_demo_api,
         )
         
         # Cancellation flag for graceful interruption
@@ -452,7 +428,7 @@ class HistoricalDataStore:
             f"HistoricalDataStore initialized: "
             f"env={self.env}, "
             f"db={self.db_path}, "
-            f"API={api_name} ({api_url}), "
+            f"API=LIVE (api.bybit.com), "
             f"auth={key_status}, "
             f"key_source={key_source}"
         )
@@ -1970,20 +1946,18 @@ class HistoricalDataStore:
 # Env-aware Singleton Instances
 # ==============================================================================
 #
-# Three separate stores for concurrent operations:
+# Two separate stores for concurrent operations:
 #
 # | Store            | DB File                      | API Source         | Purpose              |
 # |------------------|------------------------------|--------------------|--------------------- |
 # | _store_backtest  | market_data_backtest.duckdb  | api.bybit.com      | Parallel backtests   |
 # | _store_live      | market_data_live.duckdb      | api.bybit.com      | Live trading warm-up |
-# | _store_demo      | market_data_demo.duckdb      | api-demo.bybit.com | Paper trading        |
 #
-# This allows: backtest + live + demo to run in separate processes simultaneously
+# This allows: backtest + live to run in separate processes simultaneously
 
 # Cached instances per environment
 _store_backtest: HistoricalDataStore | None = None
 _store_live: HistoricalDataStore | None = None
-_store_demo: HistoricalDataStore | None = None
 
 # Process-level flag to force read-only mode for all database access
 # Set to True in child processes for parallel backtest execution
@@ -2006,14 +1980,14 @@ def reset_stores(force_read_only: bool = False) -> None:
         from src.data.historical_data_store import reset_stores
         reset_stores(force_read_only=True)  # Must be first thing in child process
     """
-    global _store_backtest, _store_live, _store_demo, _force_read_only
+    global _store_backtest, _store_live, _force_read_only
 
     # Set process-level read-only flag
     _force_read_only = force_read_only
 
     # Close existing connections if any
     _reset_logger = get_module_logger(__name__)
-    for _name, _store in [("backtest", _store_backtest), ("live", _store_live), ("demo", _store_demo)]:
+    for _name, _store in [("backtest", _store_backtest), ("live", _store_live)]:
         if _store is not None:
             try:
                 _store.conn.close()
@@ -2021,7 +1995,6 @@ def reset_stores(force_read_only: bool = False) -> None:
                 _reset_logger.error("Failed to close %s DuckDB connection: %s", _name, e)
     _store_backtest = None
     _store_live = None
-    _store_demo = None
 
 
 def get_historical_store(env: DataEnv = DEFAULT_DATA_ENV, read_only: bool = False) -> HistoricalDataStore:
@@ -2029,7 +2002,7 @@ def get_historical_store(env: DataEnv = DEFAULT_DATA_ENV, read_only: bool = Fals
     Get or create the HistoricalDataStore instance for a given environment.
 
     Args:
-        env: Data environment ("backtest", "live", or "demo"). Defaults to "backtest".
+        env: Data environment ("backtest" or "live"). Defaults to "backtest".
         read_only: If True, create a fresh read-only instance instead of using singleton.
                   This enables concurrent readers for parallel backtest execution.
 
@@ -2038,13 +2011,13 @@ def get_historical_store(env: DataEnv = DEFAULT_DATA_ENV, read_only: bool = Fals
 
     Note:
         Each environment uses a separate DuckDB file to allow concurrent operations
-        across different processes (backtest + live + demo simultaneously).
+        across different processes (backtest + live simultaneously).
 
         When read_only=True or _force_read_only is set (by reset_stores), a NEW
         instance is created in read-only mode. This allows multiple parallel
         processes to read simultaneously.
     """
-    global _store_backtest, _store_live, _store_demo, _force_read_only
+    global _store_backtest, _store_live, _force_read_only
 
     env = validate_data_env(env)
 
@@ -2061,14 +2034,10 @@ def get_historical_store(env: DataEnv = DEFAULT_DATA_ENV, read_only: bool = Fals
         if _store_backtest is None:
             _store_backtest = HistoricalDataStore(env="backtest")
         return _store_backtest
-    elif env == "live":
+    else:
         if _store_live is None:
             _store_live = HistoricalDataStore(env="live")
         return _store_live
-    else:  # demo
-        if _store_demo is None:
-            _store_demo = HistoricalDataStore(env="demo")
-        return _store_demo
 
 
 def get_backtest_historical_store() -> HistoricalDataStore:
@@ -2081,19 +2050,14 @@ def get_live_historical_store() -> HistoricalDataStore:
     return get_historical_store(env="live")
 
 
-def get_demo_historical_store() -> HistoricalDataStore:
-    """Get the demo environment HistoricalDataStore (convenience function)."""
-    return get_historical_store(env="demo")
-
-
 def _atexit_close_stores() -> None:
     """Close all singleton DuckDB connections on process exit.
 
     Ensures DuckDB WAL files and file locks are properly released,
     preventing lock errors when running sequential subprocess backtests.
     """
-    global _store_backtest, _store_live, _store_demo
-    for store in (_store_backtest, _store_live, _store_demo):
+    global _store_backtest, _store_live
+    for store in (_store_backtest, _store_live):
         if store is not None:
             try:
                 store.close()
@@ -2101,7 +2065,6 @@ def _atexit_close_stores() -> None:
                 pass
     _store_backtest = None
     _store_live = None
-    _store_demo = None
 
 
 atexit.register(_atexit_close_stores)

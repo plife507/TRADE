@@ -8,7 +8,7 @@ This module re-exports all data tools from their specialized modules:
 - data_tools_query: Query and composite tools
 
 Environment-aware: All tools default to "live" environment for data operations.
-Pass env="demo" to operate on demo history instead.
+All operations use the live database.
 """
 
 # Re-export all public symbols from split modules

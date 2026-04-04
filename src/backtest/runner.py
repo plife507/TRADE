@@ -870,7 +870,7 @@ class RunnerConfig:
     # Snapshot emission
     emit_snapshots: bool = False
 
-    # Data environment (backtest, live, demo) - determines which DuckDB to use
+    # Data environment (backtest, live) - determines which DuckDB to use
     data_env: DataEnv = "backtest"
     
     def load_play(self) -> Play:

@@ -4,398 +4,27 @@ Open work, bugs, and priorities. Completed work is in `memory/completed_work.md`
 
 ---
 
-## Active Work (backtest quality + new features)
+## Active Work
 
 ### T1: Warmup Parity Validation
 - [ ] Add a validation check that runs each indicator to `is_ready()` and compares vs registry formula
 - [ ] **GATE**: `python trade_cli.py validate module --module coverage` passes
 
-### T2: Structure Health — Test & Heal
+### T2: Structure Health — Deferred Integration Tests
+- [ ] Feed identical 500-bar candle sequence through both `FeedStore` (backtest) and `LiveIndicatorCache` (live), compare all structure outputs bar-by-bar (requires engine-level integration test harness)
+- [ ] Verify med_tf/high_tf structure update timing — `TFIndexManager` (backtest) vs buffer-length (live) produce updates on same bars (requires live provider mock)
 
-Replaces old T2. Covers all structure detector issues identified in investigation (2026-03-27).
-See `docs/STRUCTURE_DETECTION_AUDIT.md` for 6-month BTCUSDT audit data.
-
-#### Phase 1: Confirmation Close Default + Noise Reduction ✅
-- [x] Change `confirmation_close` default from `False` to `True` in `market_structure.py:83`
-- [x] Update vectorized reference in `vectorized_references/market_structure_reference.py` to match
-- [x] Update G5 parity audit expected values if needed (not needed — uses defaults)
-- [x] Audit all 14 structure validation plays — added `confirmation_close: false` to STR_003 (wick-based BOS test)
-- [x] Add new play `STR_015_ms_confirmation_close.yml` — tests both close and wick modes
-- [x] Document in `STRUCTURE_DETECTION_AUDIT.md`: "default changed, wick mode still available"
-- [x] **GATE**: `python trade_cli.py validate module --module parity --json` — G5 9/9 pass
-- [x] **GATE**: `python trade_cli.py validate module --module structures --json` — 15/15 pass
-
-#### Phase 2: Live/Backtest Indicator Parity (Shadow Exchange readiness)
-- [x] Add NaN-input tests for all 7 detectors — feed BarData with NaN indicators, verify no crash and predictable behavior
-- [x] Zone detector (`zone.py:191-193`): returns early on NaN ATR — test proves zone stays "none" until ATR available
-- [x] Swing detector: significance outputs are NaN (not crash) when `atr_key` indicator missing — verified
-- [x] Fibonacci detector: levels stay NaN when source swing hasn't formed yet — verified
-- [x] Derived zone detector: empty-slot sentinels returned when no zones exist — verified
-- [x] Zone late-ATR parity test: NaN for first 50 bars then real ATR — no crash, zones form after — verified
-- [ ] Add integration test: feed identical 500-bar candle sequence through both `FeedStore` (backtest path) and `LiveIndicatorCache` (live path), compare all structure outputs bar-by-bar (deferred: requires engine-level integration test harness)
-- [ ] Add integration test: verify med_tf/high_tf structure update timing — `TFIndexManager` (backtest) vs buffer-length (live) produce updates on same bars (deferred: requires live provider mock)
-- [x] **GATE**: `python trade_cli.py validate module --module parity --json` — G5 16/16 pass (was 9)
-- [x] **GATE**: 7 NaN-resilience tests added to G5, all pass
-
-#### Phase 3: Trend Strength=2 Investigation + Fix ✅
-- [x] Instrument `_classify_trend()` — tested wave sequences with synthetic staircase and real-like data
-- [x] Root cause confirmed: **data characteristic, not algorithm bug**. BTC 4h volatility alternates wave direction too fast for 2+ consecutive same-direction pairs. Algorithm correctly produces strength=2 on `trend_stairs` pattern (27.6% of bars).
-- [x] On real BTC data with default params (left=5, right=5), wave pairs alternate: UP→RANGING→DOWN→RANGING. Need calmer markets or higher TFs.
-- [x] No existing plays depend on `strength >= 2` (all use `>= 1`). Confirmed via grep.
-- [x] Added `STR_016_trend_strength.yml` — uses `trend_stairs` pattern, left=3/right=3, produces strength=2.
-- [x] Document: strength=2 requires orderly trending markets. Use higher TFs (4h+) or altcoins with cleaner structure for reliable strength=2 signals. See `STRUCTURE_DETECTION_AUDIT.md`.
-- [x] **GATE**: `python trade_cli.py validate module --module structures --json` — 16/16 pass
-- [x] **GATE**: STR_016 produces strength=2 on synthetic data (551/2000 bars = 27.6%)
-
-#### Phase 4: CHoCH Break-Level Correctness ✅
-- [x] CHoCH now only fires when price breaks the BOS-anchored swing level (not any prior swing)
-- [x] Added `_choch_anchor_level` / `_choch_anchor_idx` tracking to market_structure.py
-- [x] Fixed `_update_break_levels` — split into per-side updates to match vectorized reference (prevented stale break level re-assertion after CHoCH)
-- [x] Updated vectorized reference to match BOS-anchored CHoCH logic
-- [x] Added `STR_017_choch_bos_anchor.yml` — long_short mode, wick-based, trending pattern (11 trades)
-- [x] **GATE**: `python trade_cli.py validate module --module parity --json` — G5 16/16 pass
-- [x] **GATE**: `python trade_cli.py validate module --module structures --json` — 17/17 pass
-- [ ] **GATE**: Run `scripts/run_full_suite.py` — pending (running in background)
-
-### T9: ICT Structure Features — Full Integration Plan
-
-See `docs/MARKET_STRUCTURE_FEATURES.md` for algorithm specs, output fields, edge cases, and DSL examples.
-
-**Current state**: 7 structures + 44 indicators (mechanics layer).
-**Goal**: Add 7 structures + 3 indicators (institutional narrative layer) across 6 gated phases.
-
-```
-Dependency graph:
-  swing (exists) ──┬──> order_block ──> breaker_block
-                   ├──> liquidity_zones
-                   ├──> premium_discount (trivial)
-  ATR (exists) ────┼──> displacement ──> order_block
-  (none) ──────────┼──> fair_value_gap ──> mitigation_tracking
-  (none) ──────────┼──> volume_profile ──> anchored_volume_profile
-  (time-based) ────┴──> session_levels
-```
-
-**Per-detector integration checklist** (12 steps, all required):
-1. Create `src/structures/detectors/<name>.py` — `@register_structure`, `BaseIncrementalDetector`
-2. Import in `src/structures/detectors/__init__.py` + add to `__all__`
-3. Add output types to `STRUCTURE_OUTPUT_TYPES` in `registry.py`
-4. Add warmup formula to `STRUCTURE_WARMUP_FORMULAS` in `registry.py`
-5. Create vectorized reference in `src/forge/audits/vectorized_references/<name>_reference.py`
-6. Add `audit_<name>()` function in `audit_structure_parity.py`
-7. Register audit function in `audit_funcs` list (line ~1270)
-8. Create validation play `plays/validation/structures/STR_0XX_<name>.yml`
-9. Add synthetic data pattern if needed (to `PatternType` + `PATTERN_GENERATORS`)
-10. Verify G15 coverage: `python trade_cli.py validate module --module coverage`
-11. Verify G5 parity: `python trade_cli.py validate module --module parity`
-12. Verify G9 suite: `python trade_cli.py validate module --module structures`
-
-**Per-indicator integration checklist** (7 steps):
-1. Create incremental class in `src/indicators/incremental/<module>.py` — inherit `IncrementalIndicator`
-2. Register in factory `src/indicators/incremental/factory.py` — `_FACTORY` + `_VALID_PARAMS`
-3. Export from `src/indicators/incremental/__init__.py`
-4. Add to `SUPPORTED_INDICATORS` in `src/backtest/indicator_registry.py` — warmup, inputs, params, output_keys
-5. Add to `INDICATOR_OUTPUT_TYPES` in `src/backtest/indicator_registry.py`
-6. Create validation play `plays/validation/indicators/IND_0XX_<name>.yml`
-7. Verify G15 coverage + G9 suite pass
-
-#### Phase 1: Displacement + Fair Value Gap (parallel, zero deps) ✅
-
-Both detectors built and validated. 9 structures registered, 0 coverage gaps.
-
-**1a. Displacement detector** — strong impulsive candle detection
-- [x] Create `src/structures/detectors/displacement.py`
-  - `@register_structure("displacement")`
-  - `OPTIONAL_PARAMS`: `atr_key` ("atr"), `body_atr_min` (1.5), `wick_ratio_max` (0.4)
-  - `DEPENDS_ON`: [] (reads ATR from `bar.indicators`)
-  - State: per-bar flags (`is_displacement`, `direction`, `body_atr_ratio`, `wick_ratio`) + persistent (`last_idx`, `last_direction`, `version`)
-  - O(1) update: compute body/ATR ratio and wick ratio, classify
-  - Handle NaN ATR gracefully (no displacement, return early)
-- [x] Add to `detectors/__init__.py` — import + `__all__`
-- [x] `STRUCTURE_OUTPUT_TYPES["displacement"]`: `is_displacement`=BOOL, `direction`=INT, `body_atr_ratio`=FLOAT, `wick_ratio`=FLOAT, `last_idx`=INT, `last_direction`=INT, `version`=INT
-- [x] `STRUCTURE_WARMUP_FORMULAS["displacement"]`: `lambda params, swing_params: 1`
-- [x] Create `vectorized_references/displacement_reference.py`
-- [x] Add `audit_displacement()` to parity audit + register in `audit_funcs`
-- [x] Add synthetic pattern `displacement_impulse` — phases: calm (40%), impulse burst (20%), calm (40%). Strong body candles with small wicks during burst phase.
-- [x] Create `STR_018_displacement.yml` — entry on `disp.is_displacement == 1 AND disp.direction == 1` with `displacement_impulse` pattern
-- [x] **GATE**: G5 parity passes for displacement
-
-**1b. Fair Value Gap detector** — 3-candle price imbalance gaps
-- [x] Create `src/structures/detectors/fair_value_gap.py`
-  - `@register_structure("fair_value_gap")`
-  - `OPTIONAL_PARAMS`: `atr_key` ("atr"), `min_gap_atr` (0.0), `max_active` (5)
-  - `DEPENDS_ON`: []
-  - State: 3-candle deque buffer, active FVG slots (list of dicts: direction, upper, lower, anchor_idx, state, fill_pct), per-bar flags, nearest bull/bear accessors, aggregate counts
-  - O(1) update: push candle, check 3-candle gap pattern, update mitigation on active FVGs
-  - Mitigation: track fill_pct; 50%+ fill → "mitigated"; close through → "invalidated"
-  - Slot management: newest first, evict oldest beyond `max_active`
-- [x] Add to `detectors/__init__.py`
-- [x] `STRUCTURE_OUTPUT_TYPES["fair_value_gap"]`: 12 output fields registered
-- [x] `STRUCTURE_WARMUP_FORMULAS["fair_value_gap"]`: warmup=3
-- [x] Create `vectorized_references/fair_value_gap_reference.py`
-- [x] Add `audit_fair_value_gap()` to parity audit + register
-- [x] Add synthetic pattern `trending_with_gaps`
-- [x] Create `STR_019_fvg_basic.yml` — 11 trades on trending_with_gaps
-- [ ] Create `STR_020_fvg_mitigation.yml` — deferred to Phase 6 (mitigation tracking enhancement)
-- [x] **GATE**: G5 parity passes for fair_value_gap (18/18 detectors, 0 failures)
-
-**Phase 1 gates:**
-- [x] **GATE**: `python trade_cli.py validate module --module parity --json` — 18/18 pass
-- [x] **GATE**: `python trade_cli.py validate module --module structures --json` — 19/19 pass
-- [x] **GATE**: `python trade_cli.py validate module --module coverage --json` — 9 structures, 0 gaps
-
-#### Phase 2: Order Block + Liquidity Zones (parallel, depend on Phase 1) ✅
-
-Both detectors built and validated. 11 structures registered, 0 coverage gaps.
-
-**2a. Order Block detector** — last opposing candle before displacement
-- [x] Create `src/structures/detectors/order_block.py`
-  - `@register_structure("order_block")`
-  - `OPTIONAL_PARAMS`: `atr_key` ("atr"), `use_body` (True), `require_displacement` (True), `body_atr_min` (1.5), `wick_ratio_max` (0.4), `max_active` (5), `lookback` (3)
-  - `DEPENDS_ON`: ["swing"], `OPTIONAL_DEPS`: ["displacement"]
-  - State: candle history deque (lookback+2), active OB slots (direction, upper, lower, anchor_idx, state, touch_count), per-bar flags, nearest accessors, aggregate counts
-  - O(1) update: check displacement (via dep or inline), search backward for opposing candle, create OB, update mitigation on active OBs
-  - If displacement dep available: use `disp.is_displacement`; else: compute inline with same body_atr_min/wick_ratio_max
-  - OB zone: body range (use_body=True) or full range (use_body=False) of opposing candle
-  - Mitigation: price enters OB zone → "touched"/"mitigated"; close through → "invalidated"
-- [x] Add to `detectors/__init__.py`
-- [x] `STRUCTURE_OUTPUT_TYPES["order_block"]`: 12 output fields (new_this_bar, new_direction, new_upper, new_lower, nearest_bull/bear upper/lower, active counts, any_mitigated, version)
-- [x] `STRUCTURE_WARMUP_FORMULAS["order_block"]`: `lambda params, swing_params: max(params.get("lookback", 3) + 2, swing_params["left"] + swing_params["right"])`
-- [x] Create vectorized reference + parity audit function
-- [x] Add synthetic pattern `ob_retest` — scale-invariant displacement from opposing candle, then retracement to OB zone
-- [x] Create `STR_021_order_block.yml` — entry on `ob.new_this_bar == 1 AND ob.new_direction == 1`
-- [x] **GATE**: G5 parity passes for order_block (20/20 detectors)
-
-**2b. Liquidity Zones detector** — equal highs/lows clustering + sweep detection
-- [x] Create `src/structures/detectors/liquidity_zones.py`
-  - `@register_structure("liquidity_zones")`
-  - `OPTIONAL_PARAMS`: `atr_key` ("atr"), `tolerance_atr` (0.3), `sweep_atr` (0.1), `min_touches` (2), `max_active` (5), `max_swing_history` (20)
-  - `DEPENDS_ON`: ["swing"]
-  - State: swing history deques (highs/lows), active zone slots (side, level, touches, state, sweep_bar_idx), per-bar flags (new_zone, sweep_this_bar, sweep_direction), nearest level accessors
-  - O(1) update: track new swing pivots, cluster detection on last N swings, check sweeps on active zones, recompute nearest
-  - Clustering: find N swings within tolerance_atr * ATR of each other → form zone at average level
-  - Sweep: price exceeds zone level by sweep_atr * ATR
-- [x] Add to `detectors/__init__.py`
-- [x] `STRUCTURE_OUTPUT_TYPES["liquidity_zones"]`: 9 output fields registered
-- [x] `STRUCTURE_WARMUP_FORMULAS["liquidity_zones"]`: `lambda params, swing_params: (swing_params["left"] + swing_params["right"]) * params.get("min_touches", 2)`
-- [x] Create vectorized reference + parity audit function
-- [x] Add synthetic pattern `equal_highs_lows` — range-bound with multiple swing touches at same level, then sweep + reversal
-- [x] Create `STR_022_liquidity_zones.yml` — entry on `liq.sweep_this_bar == 1 AND liq.sweep_direction == -1` (swept lows = bullish signal)
-- [x] **GATE**: G5 parity passes for liquidity_zones (20/20 detectors)
-
-**Phase 2 gates:**
-- [x] **GATE**: `python trade_cli.py validate module --module parity --json` — 20/20 pass
-- [x] **GATE**: `python trade_cli.py validate module --module structures --json` — 21/21 pass
-- [x] **GATE**: `python trade_cli.py validate module --module coverage --json` — 11 structures, 0 gaps
-
-#### Phase 3: Premium/Discount (trivial, depends on swing pairs) ✅
-
-- [x] Create `src/structures/detectors/premium_discount.py`
-  - `@register_structure("premium_discount")`
-  - `DEPENDS_ON`: ["swing"]
-  - Reads `pair_high_level`, `pair_low_level` from swing dependency
-  - Computes: `equilibrium` = midpoint, `premium_level` = 75%, `discount_level` = 25%, `zone` = "premium"/"discount"/"equilibrium"/"none", `depth_pct` = position 0.0-1.0
-  - O(1): just reads swing pair values and divides
-- [x] Add to `detectors/__init__.py`
-- [x] `STRUCTURE_OUTPUT_TYPES["premium_discount"]`: 6 fields registered
-- [x] `STRUCTURE_WARMUP_FORMULAS["premium_discount"]`: `lambda params, swing_params: swing_params["left"] + swing_params["right"]`
-- [x] Create vectorized reference + parity audit
-- [x] Add "premium", "discount", "equilibrium" to `_KNOWN_ENUM_VALUES` in `dsl_parser.py`
-- [x] Create `STR_023_premium_discount.yml` — entry on `pd.zone == "discount" AND trend.direction == 1` (8 trades)
-- [x] **GATE**: `python trade_cli.py validate module --module parity --json` — 21/21 pass
-- [x] **GATE**: `python trade_cli.py validate module --module structures --json` — 22/22 pass
-- [x] **GATE**: `python trade_cli.py validate module --module coverage --json` — 12 structures, 0 gaps
-
-#### Phase 4: Volume Profile indicator (standalone, hard) ✅
-
-**4a. IncrementalVolumeProfile** — volume distribution across price levels
-- [x] Create class in `src/indicators/incremental/volume.py`
-  - Inherit `IncrementalIndicator`
-  - Params: `num_buckets` (50), `lookback` (50), `value_area_pct` (0.70)
-  - State: price range tracker, bucket volumes array, bar contribution deque for rolling eviction
-  - O(buckets) per bar for volume distribution
-  - Lazy rebinning: only rebin when price exceeds range by 10%+
-  - Outputs: `poc` (FLOAT), `vah` (FLOAT), `val` (FLOAT), `poc_volume` (FLOAT), `above_poc` (INT), `in_value_area` (INT)
-  - Note: above_poc/in_value_area typed as INT not BOOL — FeedStore float64 arrays cause BOOL `==` to fail in evaluator
-- [x] Register in factory `_FACTORY` + `_VALID_PARAMS`
-- [x] Export from `src/indicators/incremental/__init__.py`
-- [x] Add to `SUPPORTED_INDICATORS` — multi_output=True, 6 output_keys, warmup=lookback
-- [x] Add to `INDICATOR_OUTPUT_TYPES`
-- [x] Add `_compute_volume_profile_batch()` to `indicator_vendor.py` (no pandas_ta equivalent)
-- [x] Create `IND_052_volume_profile_poc.yml` — entry on `vp.above_poc == 1 AND trend.direction == 1` (13 trades)
-- [x] **GATE**: `python trade_cli.py validate module --module coverage --json` — 45 indicators, 0 gaps
-- [ ] **GATE**: `python trade_cli.py validate quick` passes — pending
-
-#### Phase 5: Breaker Blocks + Session Levels (depend on Phase 2)
-
-**5a. Breaker Block detector** — failed OB that flips polarity on CHoCH ✅
-- [x] Add OB invalidation tracking outputs (`any_invalidated_this_bar`, `last_invalidated_direction/upper/lower`) to order_block detector + vectorized reference + registry
-- [x] Create `src/structures/detectors/breaker_block.py`
-  - `@register_structure("breaker_block")`
-  - `DEPENDS_ON`: ["order_block"], `OPTIONAL_DEPS`: ["market_structure"]
-  - Monitors OB invalidations; when an OB is invalidated during a CHoCH event, it flips polarity (bullish OB → bearish resistance, vice versa)
-  - State: active breaker slots (direction, upper, lower, state, touch_count), per-bar flags
-  - Outputs: same pattern as OB (nearest, active counts, any_mitigated, version)
-- [x] Full integration checklist (registry, vectorized ref, parity audit, validation play)
-- [x] Create `STR_024_breaker_block.yml` — uses `[ob, ms]` multi-dep, entry on `brk.active_bull_count > 0` (7 trades)
-- [x] **GATE**: G5 parity 22/22, G9 suite 23/23, G15 coverage 13 structures 0 gaps
-
-**5b. Session Levels indicator** — previous daily/weekly highs/lows ✅
-- [x] Create `src/indicators/incremental/session.py`
-  - Tracks daily/weekly session boundaries using `ts_open` from bar data
-  - Outputs: `prev_day_high`, `prev_day_low`, `current_day_high`, `current_day_low`, `prev_week_high`, `prev_week_low` (all FLOAT)
-  - Reuses VWAP's boundary detection pattern (epoch ms // ms_per_day)
-- [x] Full indicator integration checklist (factory, registry, vendor batch path, __init__)
-- [x] Handle pd.Timestamp → epoch ms conversion in batch function
-- [x] Create `IND_053_session_levels.yml` — entry on `current_day_high > prev_day_high AND trend up` (12 trades)
-- [x] **GATE**: Coverage — 46 indicators, 13 structures, 0 gaps
-
-**Phase 5 gates:**
-- [x] **GATE**: `python trade_cli.py validate module --module parity --json` — 22/22 pass
-- [x] **GATE**: `python trade_cli.py validate module --module coverage --json` — 46 ind + 13 struct, 0 gaps
-- [x] **GATE**: `python trade_cli.py validate quick` — 946 checks, 0 failures (run after V_CORE_002 fix)
-
-#### Phase 6: Enhancements (depend on Phases 2 + 4)
-
-**6a. Anchored Volume Profile** — resets on structural event ✅
-- [x] Create `src/indicators/incremental/anchored_volume_profile.py`
-  - Wraps IncrementalVolumeProfile, resets on swing pair version change
-  - Additional output: `bars_since_anchor`=INT
-  - Batch: NaN placeholder (engine overwrites bar-by-bar like anchored_vwap)
-  - Added to `RUNTIME_ONLY_INDICATORS` whitelist
-- [x] Full indicator integration checklist (factory, registry, vendor, __init__)
-- [x] Create `IND_054_anchored_vol_profile.yml` — 14 trades (registration test)
-
-**6b. Mitigation Tracking** — FVG + OB lifecycle enhancement ✅
-- [x] Enhance FVG detector: add `nearest_bull_fill_pct`, `nearest_bear_fill_pct` outputs (exposes per-slot fill % for DSL access)
-- [x] Update FVG vectorized reference with fill_pct tracking in aggregates
-- [x] OB already has `any_invalidated_this_bar` + invalidation zone outputs (added in Phase 5a)
-- [x] Add `STR_025_fvg_lifecycle.yml` — entry on active bull FVG with fill_pct > 0 (6 trades)
-- [x] Add `STR_026_ob_lifecycle.yml` — entry on OB invalidation event (13 trades)
-- [x] **GATE**: Existing FVG/OB plays still pass (backward compatible: STR_019=11 trades, STR_021=4 trades)
-- [ ] Future: full 5-state lifecycle (active→first_touch→partial_fill→mitigated→invalidated) and FVG touch_count
-
-**Phase 6 gates:**
-- [x] **GATE**: `python trade_cli.py validate module --module parity --json` — 22/22 pass
-- [x] **GATE**: `python trade_cli.py validate module --module coverage --json` — 47 ind + 13 struct, 0 gaps
-- [ ] **GATE**: `python trade_cli.py validate standard` passes — pending
-- [ ] **GATE**: `python scripts/run_full_suite.py` — no regressions — pending
-
-#### Final: ICT Chain Integration Play ✅
-
-- [x] Create `STR_027_full_ict_chain.yml` — 9 structures in one play: swing → displacement → FVG → OB → liquidity_zones → trend → market_structure → premium_discount → breaker_block. Entry: sticky bullish BOS direction + discount zone + active bullish OB. 17 trades on volatile pattern.
-- [x] Dissected all 8 detector outputs independently — BOS `this_bar` contradicts discount zone (BOS pushes price up); switched to sticky `bos_direction` for structural bias.
-- [ ] **GATE**: `python trade_cli.py validate standard` — pending (run separately)
-
----
-
-### T10: Deep Dive Structure Detector Verification
-
-Systematic line-by-line verification of all 13 structure detectors. Every algorithm, math formula, edge case — on hand-crafted synthetic data AND regime-matched real SOLUSDT 1h market data. No forced passes.
-
-**Architecture**: `src/forge/audits/structure_deep_tests/` — 13 scripts + harness + runner.
-
-**Real Data**: SOLUSDT 1h from DuckDB, regime-matched per detector:
-
-| Regime | Date Range | Character |
-|--------|-----------|-----------|
-| BULL | Jul 14-27 2025 | Clean 2-week rally, low ATR |
-| BEAR | Feb 24 - Mar 2 2025 | Strong persistent sell-off |
-| CONSOLIDATION | Sep 15-21 2025 | Tightest range (2.8% max swing) |
-| CHOPPY | Jan 27 - Feb 2 2025 | Whipsaw, 12.9% max range |
-| BULL→BEAR | Sep 8 - Oct 12 2025 | Trend reversal (avoid Oct 10 black swan) |
-| BEAR→BULL | Mar 24 - Apr 13 2025 | V-reversal |
-
-**Structure → Regime Mapping**:
-
-| # | Structure | Regime | Why |
-|---|-----------|--------|-----|
-| 1 | rolling_window | BULL | Needs price movement |
-| 2 | swing | BULL + BEAR | Clear pivots form in trends |
-| 3 | trend | BULL, BEAR, CONSOL | Test all 3 directions |
-| 4 | zone | BULL + CONSOL | Zone formation + zone holds |
-| 5 | fibonacci | BULL+pullback | Retracement levels during pullback |
-| 6 | derived_zone | BULL+pullback | Fib-based zone tracking |
-| 7 | market_structure | BULL→BEAR | BOS in trend, CHoCH at reversal |
-| 8 | displacement | BEAR start | Impulsive sell candles |
-| 9 | fair_value_gap | BULL + BEAR | Gaps form in strong moves |
-| 10 | order_block | BEAR→BULL | OB before displacement, reversal retests |
-| 11 | liquidity_zones | CONSOL→sweep | Consolidation builds zones, trend sweeps |
-| 12 | premium_discount | CONSOL | Clear defined range |
-| 13 | breaker_block | BULL→BEAR | OB invalidation + CHoCH at reversal |
-
-**Per-Detector Test Categories** (5 per script):
-1. **MATH** — Hand-computed known inputs → expected outputs
-2. **ALGORITHM** — State transitions, ordering, guards
-3. **EDGE** — NaN, zero ATR, doji, flat, gap, single-bar
-4. **PARITY** — Inc vs vec on regime-matched REAL data (not synthetic)
-5. **REAL SANITY** — Outputs make logical sense on real market data
-
-**Cross-Detector Consistency** (run at end):
-- X1: Swing→Trend: when trend=1, recent waves show HH+HL
-- X2: Swing→Fibonacci: anchor_high == pair_high_level exactly
-- X3: Swing→Premium/Discount: equilibrium == (pair_high+pair_low)/2
-- X4: Displacement→Order Block: every OB bar has displacement
-- X5: OB+MS→Breaker: every breaker has ob.invalidated + ms.choch
-
-**Execution**: `python -m src.forge.audits.structure_deep_tests.run_all`
-
-#### Phase 1: Harness + Foundation Detectors
-- [x] Create `_harness.py` — TestCase, TestReport, load_sol_1h(), compute_atr_array(), make_bar(), assert_close()
-- [x] `test_01_rolling_window.py` — M1.1-M1.4, A1.1-A1.2, E1.1, P1.1, R1.1
-- [x] `test_02_swing.py` — M2.1-M2.6, A2.1-A2.2, E2.1-E2.2, P2.1-P2.2, R2.1-R2.2
-- [x] **GATE**: Phase 1 scripts all pass (23/23)
-
-#### Phase 2: Swing-Dependent Detectors
-- [x] `test_03_trend.py` — M3.1-M3.4, A3.1, E3.1, P3.1, R3.1-R3.3
-- [x] `test_04_zone.py` — M4.1-M4.4, E4.1, P4.1, R4.1-R4.2
-- [x] `test_05_fibonacci.py` — M5.1-M5.4, A5.1, E5.1, P5.1, R5.1
-- [x] `test_06_derived_zone.py` — M6.1-M6.2, A6.1-A6.2, E6.1, P6.1, R6.1
-- [x] `test_07_market_structure.py` — M7.1-M7.3, A7.1-A7.4, E7.1, P7.1, R7.1-R7.3
-- [x] **GATE**: Phase 2 scripts all pass (68/68)
-
-#### Phase 3: Independent + Complex Detectors
-- [x] `test_08_displacement.py` — M8.1-M8.4, E8.1-E8.2, P8.1, R8.1-R8.2
-- [x] `test_09_fair_value_gap.py` — M9.1-M9.5, A9.1-A9.3, E9.1, P9.1-P9.2, R9.1-R9.2
-- [x] `test_10_order_block.py` — M10.1-M10.3, A10.1-A10.4, E10.1, P10.1, R10.1
-- [x] `test_11_liquidity_zones.py` — M11.1-M11.3, A11.1-A11.3, E11.1, P11.1, R11.1-R11.2
-- [x] `test_12_premium_discount.py` — M12.1-M12.3, A12.1-A12.2, E12.1, P12.1, R12.1-R12.2
-- [x] `test_13_breaker_block.py` — M13.1-M13.4, A13.1-A13.3, E13.1, P13.1, R13.1-R13.2
-- [x] **GATE**: Phase 3 scripts all pass (130/130)
-
-#### Phase 4: Cross-Detector + Final
-- [x] Cross-detector consistency tests X1-X5 in `run_all.py`
-- [x] `run_all.py` — sequential runner with JSON output
-- [x] **GATE**: `python -m src.forge.audits.structure_deep_tests.run_all` — 135/135 pass (1.7s)
-- [x] Save report to `docs/STRUCTURE_DEEP_TEST_REPORT.json`
-
-#### Phase 5: Engine Integration
-- [x] `test_14_engine_integration.py` — ENG.1-ENG.5: PlayEngine snapshot outputs == direct detector calls
-- [x] **GATE**: Engine structure outputs match direct detectors (0 mismatches on swing/trend/MS)
-
-#### Phase 6: Live Path Parity
-- [x] `test_15_live_path_parity.py` — LIVE.1-LIVE.5: LiveIndicatorCache path == FeedStore backtest path
-- [x] **GATE**: Backtest vs live structure outputs identical (0 mismatches on same OHLCV)
-- [x] **GATE**: `python -m src.forge.audits.structure_deep_tests.run_all` — 145/145 pass (141s)
-
-#### Phase 7: Production Live Engine Parity
-- [x] `test_16_live_engine_parity.py` — PROD.1-PROD.6: per-bar `on_candle_close()` production path
-- [x] Feeds 24K+ candles one-by-one through `LiveDataProvider.on_candle_close()` (real production code)
-- [x] Compares structure outputs bar-by-bar against direct backtest detectors: 0 mismatches
-- [x] RSI incremental vs batch: max diff 0.00000000 across 24K bars
-- [x] Buffer trim survival verified (global_bar_count=24480, buffer_size=500)
-- [x] **FINAL GATE**: `python -m src.forge.audits.structure_deep_tests.run_all` — 151/151 pass (182s)
+### T9: ICT Features — Remaining Items
+- [ ] `STR_020_fvg_mitigation.yml` — FVG mitigation tracking validation play
+- [ ] Full 5-state FVG/OB lifecycle (active -> first_touch -> partial_fill -> mitigated -> invalidated) + FVG touch_count
 
 ---
 
 ## P1: Shadow Exchange Order Fidelity (SimExchange vs Bybit Parity)
 
-See `docs/SHADOW_ORDER_FIDELITY_REVIEW.md` for full analysis, code references, and Bybit API cross-reference.
+See `docs/SHADOW_ORDER_FIDELITY_REVIEW.md` for full analysis.
 
-**Context:** Shadow Exchange (M4) = SimulatedExchange + real WS feed. No live Bybit order API. The sim IS the exchange.
-
-**14 features correct today:** Market/limit/stop fills, GTC/IOC/FOK/PostOnly, maker/taker fees, OCO, liquidation on mark, bankruptcy settlement, funding, reduce-only, break-even stop, order amendment, 1m granular TP/SL.
-
-**4 HIGH gaps, 3 MEDIUM gaps identified.**
+14 features correct today. 4 HIGH gaps, 3 MEDIUM gaps identified.
 
 ### Phase 1: Price Fidelity (H1 + H2)
 - [ ] `PriceModel.set_external_prices(mark, last, index)` — shadow mode feeds real WS prices
@@ -426,49 +55,37 @@ See `docs/SHADOW_ORDER_FIDELITY_REVIEW.md` for full analysis, code references, a
 
 ---
 
-## M4: Shadow Exchange — The Training Ground
+## P2: Deprecate Demo Mode — COMPLETE (2026-04-03)
 
-See `docs/SHADOW_EXCHANGE_DESIGN.md` for full architecture (7 layers, resource estimates, M6 integration, VPS deployment).
-See `docs/SHADOW_ORDER_FIDELITY_REVIEW.md` for SimExchange fidelity gaps (H1-H4, M1-M3).
+Demo mode fully removed. Pipeline is now: **backtest -> shadow -> live**.
+Both shadow and live use the live Bybit API (`api.bybit.com`).
 
-**What it is:** Always-on paper trading using SimExchange + real WS data. NOT demo mode (no Bybit API calls for orders). Runs 50+ plays in parallel on a VPS. Tracks P&L per play, per market condition. Graduates winning plays to live trading (M5).
+- [x] `TradingMode` class removed — no more `PAPER`/`REAL` distinction
+- [x] `TRADING_MODE` env var removed — mode selected per-play via `--mode`
+- [x] `BYBIT_USE_DEMO` env var removed
+- [x] All `BYBIT_DEMO_*` env vars removed
+- [x] `api_keys.env` and `env.example` updated to live-only
+- [x] `.github/workflows/smoke.yml` cleaned of demo references
+- [x] Config foundation: `TradingEnv = Literal["live"]`, `DataEnv = Literal["backtest", "live"]`
+- [x] Exchange layer: pybit calls always `demo=False`, `testnet=False`
+- [x] Engine: modes = `Literal["backtest", "live", "shadow"]`, `InstanceMode` = LIVE/BACKTEST/SHADOW
+- [x] Factory safety gate: `confirm_live=True` + API key validation (no more TRADING_MODE check)
+- [x] All docstrings updated: "demo" → "shadow", "paper" → "simulated"
+- [x] Security auditor agent config updated
+- [x] **GATE**: `grep -r "TradingMode\|TRADING_MODE\|BYBIT_USE_DEMO\|BYBIT_DEMO" src/ --include="*.py"` → zero matches
 
-**Critical path:** P1 (sim fidelity H1+H2) → M4 Phase 1-2 → M4 Phase 3-4 → M4 Phase 5-6
+---
 
-### Phase 1: ShadowEngine — Single Play with SimExchange ✅
-- [x] Created `src/shadow/` module: `__init__.py`, `types.py`, `config.py`, `engine.py`, `journal.py`
-- [x] ShadowEngine wraps PlayEngine + SimExchange + LiveDataProvider
-- [x] ShadowJournal: JSONL trade logging per engine
-- [x] CLI: `python trade_cli.py shadow run --play X`
-- [x] **GATE**: Single play produces trades with correct P&L — proven end-to-end
+## M4: Shadow Exchange — Remaining Phases
 
-### Phase 2: SharedFeedHub + Multi-Play Orchestration ✅
-- [x] SharedFeedHub: one WS per symbol, fan-out to registered engines
-- [x] ShadowOrchestrator: lifecycle manager, resource limits, health monitoring
-- [x] CLI: `shadow add/remove/list/stats` subcommands
-- [x] WS gap detection + REST backfill in SharedFeedHub
-- [x] **GATE**: Multi-play orchestration working
-
-### Phase 3: ShadowPerformanceDB ✅
-- [x] ShadowPerformanceDB: DuckDB for instances, trades, snapshots
-- [x] Orchestrator DB integration
-- [x] CLI: `shadow stats --all --json`, `shadow stats --instance X --json`
-
-### Phase 4: ShadowDaemon — VPS Always-On ✅
-- [x] ShadowDaemon: process management with signal handling
-- [x] `config/shadow.yml`: daemon configuration
-- [x] `deploy/trade-shadow.service`: systemd unit file
-- [x] CLI: `shadow daemon --config config/shadow.yml`
+Phases 1-4 complete (ShadowEngine, FeedHub, Orchestrator, PerformanceDB, Daemon).
+See `docs/SHADOW_EXCHANGE_DESIGN.md` for full architecture.
 
 ### Phase 5: ShadowGraduator — Promotion Pipeline
-
-### Phase 5: ShadowGraduator — Promotion Pipeline
-**Goal:** Score shadow plays and recommend promotion to live trading.
-
 - [ ] `ShadowGraduator`: computes graduation scores daily
   - 10 graduation criteria (configurable thresholds): runtime, trades, PnL, Sharpe, drawdown, win rate, PF, consistency, regime diversity, no active drawdown
   - Composite scoring: consistency_score, regime_diversity_score, recency_score
-  - Allocation sizing: half-Kelly × confidence adjustment, capped at 10% per play
+  - Allocation sizing: half-Kelly x confidence adjustment, capped at 10% per play
 - [ ] `config/shadow_graduation.yml`: default graduation thresholds
 - [ ] Graduation report: Rich-formatted terminal output (metrics, regime breakdown, criteria checklist, recommendation)
 - [ ] CLI: `shadow graduation check --instance X`, `shadow graduation check --all`, `shadow graduation report --instance X`
@@ -477,10 +94,8 @@ See `docs/SHADOW_ORDER_FIDELITY_REVIEW.md` for SimExchange fidelity gaps (H1-H4,
 - [ ] **GATE**: Promotion outputs valid Play YAML with recommended risk parameters
 
 ### Phase 6: M6 Integration Hooks
-**Goal:** Provide training data interface for Market Intelligence module.
-
 - [ ] Market context capture: record regime + metrics alongside every trade and snapshot
-- [ ] `export_training_data(symbol, days)` → DataFrame for M6 consumption
+- [ ] `export_training_data(symbol, days)` -> DataFrame for M6 consumption
 - [ ] Performance-by-regime analytics: per-play breakdown across 4 regime types
 - [ ] Play recommendation interface: `PlayRecommendation` dataclass (activate/deactivate/promote/demote + confidence + reason)
 - [ ] **GATE**: Training data export covers 90 days, all required columns present
@@ -488,70 +103,157 @@ See `docs/SHADOW_ORDER_FIDELITY_REVIEW.md` for SimExchange fidelity gaps (H1-H4,
 
 ---
 
-## P0: Codebase Review Remediation (Safety-Critical Fixes)
+## M7: TradingView Parity Verification
 
-### Phase 1: DuckDB Lock Eviction (P0 — prevents DB corruption) ✅
-- [x] Skip age-based eviction when PID is alive (line 506-513 in `historical_data_store.py`)
-- [x] Add mtime heartbeat refresh during long write operations
-- [x] **GATE**: `python3 trade_cli.py validate quick` passes
+See `docs/TV_PARITY_DESIGN.md` for full architecture.
 
-### Phase 2: LiveRunner Queue Backpressure (P0 — prevents stale signal execution) ✅
-- [x] Soft queue depth warning (threshold=5, logs when exceeded)
-- [x] Add queue age tracking (monotonic timestamp when item enqueued)
-- [x] Add circuit breaker: halt trading + trigger panic if queue age > 2× exec timeframe
-- [x] Log queue depth + age metrics on each consumption
-- [x] **GATE**: `python3 trade_cli.py validate quick` passes
+Independent ground truth for all 13 structure detectors using Pine Script on real SOLUSDT charts via [tradesdontlie/tradingview-mcp](https://github.com/tradesdontlie/tradingview-mcp).
 
-### Phase 3: Risk Controls for Demo Mode (P1 — prevents unguarded demo runs) ✅
-- [x] Extend PL4 pre-live validation gate to demo mode in `cli/subcommands/play.py`
-- [x] Add max_drawdown_pct value validation (reject >= 100% as effectively disabled)
-- [x] **GATE**: `python3 trade_cli.py validate quick` passes
+### Phase 1: Infrastructure + Rolling Window + Swing
+- [ ] Install tradingview-mcp, create `.mcp.json`, verify `tv` CLI works
+- [ ] `bridge.py` — TVBridge subprocess wrapper around `tv` CLI
+- [ ] `ohlcv_alignment.py` — OHLCV parity check (DuckDB vs TradingView)
+- [ ] `comparison.py` — 4 comparison strategies (numeric, event, level, zone)
+- [ ] `runner.py` + `report.py` — orchestration + Rich/JSON output
+- [ ] `rolling_window.pine` — `ta.lowest()`/`ta.highest()` (~15 lines)
+- [ ] `swing.pine` — `ta.pivothigh()`/`ta.pivotlow()` + pairing (~120 lines)
+- [ ] CLI: `python trade_cli.py validate module --module tv-parity`
+- [ ] **GATE**: rolling_window + swing pass 95%+ match rate
 
-### Phase 4: Dangerous Exception Handlers (P1 — stops silent failures in live path) ✅
-- [x] `engine/adapters/live.py` — warm-up bar load: narrow to infrastructure errors, log at ERROR
-- [x] `engine/adapters/live.py` — structure init: removed silent catches (now fails loud)
-- [x] `engine/adapters/live.py` — added insufficient-warmup ERROR log when all tiers fail
-- [x] `core/safety.py` — panic verification: narrowed to network errors, escalate on final failure
-- [x] `data/historical_data_store.py` — DB close: log at ERROR with context
-- [x] `engine/runners/live_runner.py` — drawdown check: added traceback in error log
-- [x] `core/exchange_positions.py` — set_tp_sl: split network vs API error types in log
-- [x] **GATE**: `python3 trade_cli.py validate quick` passes
+### Phase 2: Trend + Market Structure + Zone
+- [ ] `trend.pine` — embed swing + HH/HL/LH/LL wave classification (~140 lines)
+- [ ] `market_structure.pine` — embed swing + BOS/CHoCH detection (~160 lines)
+- [ ] `zone.pine` — embed swing + ATR-width zones (~90 lines)
+- [ ] **GATE**: 5/5 detectors pass 95%+
 
-### Phase 5: Artifact Atomicity (P2 — prevents corruption cascade)
-- [x] Add `atomic_write_text()` and `atomic_write_bytes()` helpers in `utils/helpers.py`
-- [x] Apply to `ResultsSummary.write_json()` (result.json)
-- [x] Apply to `RunManifest.write_json()` (run_manifest.json)
-- [x] Apply to `ManifestWriter.write()` (run_manifest.json)
-- [x] Apply to `PipelineSignature.write_json()` (pipeline_signature.json)
-- [x] Apply to `write_parquet()` (trades.parquet, equity.parquet) via temp + rename
-- [x] Add `fcntl.flock()` file locking to `index.jsonl` appender
-- [x] **GATE**: `python3 trade_cli.py validate quick` passes
-- [x] **GATE**: `python3 scripts/run_full_suite.py` — 154/171 pass (17 pre-existing: 14 timeouts on WSL2, 1 VWAP deprecation, 1 numeric overflow, 1 cosmetic)
+### Phase 3: Fibonacci + Derived Zone + Displacement + Premium/Discount
+- [ ] `fibonacci.pine` — swing pairs + fib levels (~90 lines)
+- [ ] `derived_zone.pine` — multi-slot fib zones (~180 lines)
+- [ ] `displacement.pine` — ATR + body/wick thresholds (~50 lines)
+- [ ] `premium_discount.pine` — equilibrium calculation (~50 lines)
+- [ ] **GATE**: 9/9 detectors pass 95%+
+
+### Phase 4: ICT Chain (FVG + OB + Liquidity + Breaker)
+- [ ] `fair_value_gap.pine` — 3-candle gap + tracking (~130 lines)
+- [ ] `order_block.pine` — opposing candle + mitigation (~160 lines)
+- [ ] `liquidity_zones.pine` — cluster + sweep detection (~140 lines)
+- [ ] `breaker_block.pine` — OB flip on CHoCH (~200 lines)
+- [ ] **GATE**: 13/13 detectors pass 95%+
+
+---
+
+## M8: UTA Portfolio Management
+
+Full UTA control. One manager, no fallbacks. Sub-account isolation per play.
+See `docs/UTA_PORTFOLIO_SPEC.md` for full spec. See `docs/UTA_PORTFOLIO_DESIGN.md` for API reference.
+Branch: `feature/uta-portfolio-management`
+
+### Phase 0: InstrumentRegistry — COMPLETE (2026-04-03)
+- [x] `InstrumentSpec` frozen dataclass (symbol, category, settle_coin, base_coin, quote_coin, contract_type, filters)
+- [x] `InstrumentRegistry` class — singleton, thread-safe (RLock), TTL cache (1h)
+- [x] `refresh(categories)` — paginated fetch from `GET /v5/market/instruments-info` for linear + inverse
+- [x] `resolve(symbol) -> InstrumentSpec` — raises KeyError if unknown
+- [x] `get_routing(symbol) -> {"category": str, "settleCoin": str}` — for API call params
+- [x] `list_symbols(category, settle_coin)` — filtered listing
+- [x] **GATE**: Resolves BTCPERP → linear/USDC, BTCUSD → inverse/BTC. 675 instruments loaded.
+- [x] **GATE**: pyright 0 errors on `src/core/instrument_registry.py`
+
+### Phase 1: SubAccountManager — COMPLETE (2026-04-03)
+- [x] `SubAccountInfo` dataclass (uid, username, api_key, api_secret, status, play_id, funded_amount)
+- [x] `SubAccountManager` class — owns main_client, manages sub lifecycle
+- [x] `create(username) -> SubAccountInfo` — creates sub + API keys via Bybit API
+- [x] `get_client(uid) -> BybitClient` — lazily created, cached per uid
+- [x] `fund(uid, coin, amount) -> str` — main→sub universal transfer (returns transfer_id)
+- [x] `withdraw(uid, coin, amount) -> str` — sub→main transfer
+- [x] `get_balance(uid, coin) -> dict` — query via main API key
+- [x] `get_positions(uid) -> list` — query via sub's own client (all categories)
+- [x] `freeze(uid)` / `unfreeze(uid)` / `delete(uid)` — lifecycle management
+- [x] `save_state()` / `load_state()` — persist to `data/runtime/sub_accounts.json` (atomic write)
+- [x] `sync_from_exchange()` — discover externally created subs
+- [x] `assign_play(uid, play_id)` / `unassign_play(uid)` — play tracking
+- [x] **GATE**: Created sub uid=555635291, queried balance, state persisted/reloaded, deleted. All passed.
+- [x] **GATE**: pyright 0 errors on `src/core/sub_account_manager.py`
+- [ ] **PENDING**: Code review agent findings (may require fixes)
+
+### Phase 2: Exchange Layer — Replace Hardcoded USDT — COMPLETE (2026-04-03)
+- [x] `bybit_trading.py` — 3x `settleCoin="USDT"` replaced with required `settle_coin` param, `ValueError` on missing
+- [x] `bybit_client.py` — pass-through `settle_coin` params, removed dead `use_live_for_market_data`
+- [x] `exchange_orders_manage.py` — multi-settle-coin iteration when no symbol, removed 9 empty try blocks
+- [x] `exchange_orders_market.py` — removed 4x `_validate_trading_operation()` (deleted method from P2 cleanup)
+- [x] `exchange_orders_limit.py` — removed 4x `_validate_trading_operation()`
+- [x] `exchange_orders_stop.py` — removed 5x `_validate_trading_operation()`
+- [x] `exchange_positions.py` — removed 6x `_validate_trading_operation()`
+- [x] `exchange_manager.py` — `get_balance()` returns UTA-wide totals (totalEquity, totalAvailableBalance, etc.)
+- [x] `position_manager.py` — uses `AccountMetrics` instead of `get_wallet("USDT")`
+- [x] `live.py` — `get_balance()` and `get_equity()` use `AccountMetrics` only, no USDT wallet fallback
+- [x] `realtime_state.py` — health check: `bool(self._wallet)` instead of `self._wallet.get("USDT")`
+- [x] **GATE**: `grep "settleCoin.*USDT\|get_wallet.*USDT\|coin.*==.*USDT" src/ -r` → zero matches
+- [x] **GATE**: pyright 0 errors on all 11 modified files
+- [ ] **PENDING**: Code review agent findings (may require fixes)
+
+### Phase 3: PortfolioManager — COMPLETE (2026-04-04)
+- [x] `PortfolioSnapshot` dataclass — main account + sub-accounts + aggregates + exposure breakdown
+- [x] `SubAccountSnapshot` dataclass — per-sub equity, positions, PnL, error tracking
+- [x] `PortfolioManager` class — owns main_client, instrument_registry, sub_account_manager
+- [x] `get_snapshot() -> PortfolioSnapshot` — parallel queries via ThreadPoolExecutor (max 8 workers)
+- [x] `get_margin_headroom() -> float` — available for new deployments
+- [x] `can_deploy_play(symbol, capital) -> (bool, reason)` — pre-flight check (registry + balance)
+- [x] `recall_all() -> dict` — emergency stop: cancel orders, close positions, sweep funds to main
+- [x] `to_dict()` on both snapshot classes for web UI JSON serialization
+- [x] **GATE**: Live test — $0.47 equity, 4 coins, pre-flight checks for BTCUSDT/BTCPERP/FAKECOIN all correct
+- [x] **GATE**: pyright 0 errors on `src/core/portfolio_manager.py`
+- [ ] **PENDING**: Code review agent findings (may require fixes)
+
+### Phase 4: Tool Layer (22 tools, Web UI Ready) — COMPLETE (2026-04-04)
+- [x] `src/tools/portfolio_tools.py` — 22 tool functions (4 state + 2 instruments + 8 subs + 5 deploy + 1 emergency + 2 collateral)
+- [x] `src/tools/specs/portfolio_specs.py` — 22 specs with category taxonomy
+- [x] `src/cli/subcommands/portfolio.py` — dispatch for all portfolio subcommands
+- [x] `src/cli/argparser.py` — `_setup_portfolio_subcommands` with `--json` on all parsers
+- [x] `trade_cli.py` — portfolio command routing
+- [x] Wire imports in `src/tools/__init__.py` and `src/tools/specs/__init__.py`
+- [x] Deploy/stop/status/rebalance stubs (Phase 5 implementation)
+- [x] **GATE**: `portfolio snapshot --json` → $0.47 equity, 4 coins, 0 subs
+- [x] **GATE**: `portfolio resolve BTCPERP --json` → linear/USDC
+- [x] **GATE**: `portfolio instruments --settle-coin USDC --json` → 70 instruments
+- [x] **GATE**: `portfolio subs list --json` → 0 sub-accounts
+- [x] **GATE**: pyright 0 errors on all Phase 4 files
+- [ ] **PENDING**: Code review agent findings (may require fixes)
+
+### Phase 5: PlayDeployer + Live Engine Integration — COMPLETE (2026-04-04)
+- [x] `PlayDeployer` class — deploy (create sub → fund → engine → runner), stop, health check
+- [x] `PlayEngineFactory._create_live()` — accepts optional `client: BybitClient`
+- [x] `LiveExchange.__init__()` — accepts optional `client: BybitClient` (injected for sub-accounts)
+- [x] `ExchangeManager.__new__()` — sub-account instances bypass singleton
+- [x] Active runners map + heartbeat `is_healthy(uid)` check
+- [x] Stop pipeline: cancel task → close positions (reduce_only) → unassign play
+- [x] Tool functions wired: deploy, stop, status, rebalance (all via PlayDeployer)
+- [x] **GATE**: Full E2E test — pre-flight → create sub → fund $0.10 → start runner → health OK → stop → cleanup
+- [x] **GATE**: pyright 0 errors on all Phase 5 files
+- [ ] **PENDING**: Code review agent findings
 
 ---
 
 ## Pre-Deployment (fix before live trading)
 
 ### T3: Live Blockers
-- [x] **GAP-2** REST API fallback for warmup data — `_load_bars_from_rest_api()` in `live.py` (3-tier: buffer → DuckDB → REST)
-- [ ] **DATA-011** `_handle_stale_connection()` does REST refresh but doesn't force pybit reconnect. Passive detection + runner-level reconnect works, but no active force-reconnect.
-- [ ] **DATA-017** `panic_close_all()` cancel-before-close ordering — needs integration test.
-- [ ] **H22** Sim accepts `funding_events` kwarg but no funding event generation pipeline exists yet.
+- [ ] **DATA-011** `_handle_stale_connection()` does REST refresh but doesn't force pybit reconnect
+- [ ] **DATA-017** `panic_close_all()` cancel-before-close ordering — needs integration test
+- [ ] **H22** Sim accepts `funding_events` kwarg but no funding event generation pipeline exists yet
 
 ### T4: Live Engine Rubric
 - [ ] Define live parity rubric: backtest results as gold standard
-- [ ] Demo mode 24h validation
+- [ ] Shadow mode 24h validation (replaces demo mode validation — see P2)
 - [ ] Verify sub-loop activation in live mode
 
 ### T5: Live Trading Integration
 - [ ] Test LiveIndicatorProvider with real WebSocket data
-- [ ] Paper trading integration
+- [ ] Shadow trading integration (replaces paper/demo trading — see P2)
 
 ### T6: Manual Verification (requires exchange connection)
-- [ ] Run demo play 10+ minutes — NO "Signal execution blocked" warnings
-- [ ] `play run --play AT_001 --mode demo --headless` prints JSON, Ctrl+C stops
+- [ ] Run shadow play 10+ minutes — NO "Signal execution blocked" warnings
+- [ ] `play run --play AT_001 --mode shadow --headless` prints JSON, Ctrl+C stops
 - [ ] `play watch --json`, `play stop --all` work correctly
-- [ ] Start → stop → cooldown → restart timing works (15s)
+- [ ] Start -> stop -> cooldown -> restart timing works (15s)
 
 ---
 
@@ -604,27 +306,17 @@ python trade_cli.py -q ...                     # Quiet: WARNING only (CI, script
 python trade_cli.py -v ...                     # Verbose: signal traces, structure events
 python trade_cli.py --debug ...                # Debug: full hash tracing, all internals
 
-# Examples
-python trade_cli.py -v backtest run --play X --synthetic   # See WHY signals fire
-python trade_cli.py --debug backtest run --play X --sync   # Full hash trace per bar
-
-# Debug subcommands (diagnostic tools)
-python trade_cli.py debug math-parity --play X             # Real-data math audit
-python trade_cli.py debug snapshot-plumbing --play X       # Snapshot field check
-python trade_cli.py debug determinism --run-a A --run-b B  # Compare two runs
-python trade_cli.py debug metrics                          # Financial calc audit
-
-# All debug subcommands support --json for structured output
-python trade_cli.py debug math-parity --play X --json
+# Debug subcommands (diagnostic tools, all support --json)
+python trade_cli.py debug math-parity --play X
+python trade_cli.py debug snapshot-plumbing --play X
+python trade_cli.py debug determinism --run-a A --run-b B
+python trade_cli.py debug metrics
 ```
 
 ### Log Files
 
 ```bash
-# Structured JSONL log (all runs)
 tail -f logs/trade.jsonl                       # Live stream
 cat logs/trade.jsonl | jq '.event'             # Events only
-
-# Backtest event journal (per-run)
-cat artifacts/<input_hash>/events.jsonl        # Fill and close events per trade
+cat artifacts/<input_hash>/events.jsonl        # Per-run fill/close events
 ```

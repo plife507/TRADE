@@ -177,7 +177,7 @@ class RiskManager:
 
         # Reject zero/negative size in live mode.
         # In backtest mode, size_usdt may be 0 because the engine computes
-        # size later -- so we only enforce this for live/demo trading.
+        # size later -- so we only enforce this for live trading.
         is_backtest = signal.metadata.get("backtest", False) if signal.metadata else False
         if signal.size_usdt <= 0 and not is_backtest:
             return RiskCheckResult(

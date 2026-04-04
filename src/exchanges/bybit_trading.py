@@ -160,15 +160,22 @@ def cancel_order(
     return client._extract_result(response)
 
 
-def cancel_all_orders(client: "BybitClient", symbol: str | None = None, category: str = "linear") -> dict:
-    """Cancel all open orders."""
+def cancel_all_orders(
+    client: "BybitClient",
+    symbol: str | None = None,
+    category: str = "linear",
+    settle_coin: str | None = None,
+) -> dict:
+    """Cancel all open orders. When no symbol, settle_coin is required."""
     client._order_limiter.acquire()
 
     kwargs: dict[str, str] = {"category": category}
     if symbol:
         kwargs["symbol"] = symbol
+    elif settle_coin:
+        kwargs["settleCoin"] = settle_coin
     else:
-        kwargs["settleCoin"] = "USDT"
+        raise ValueError("cancel_all_orders requires either symbol or settle_coin")
 
     response = client._session.cancel_all_orders(**kwargs)
     return client._extract_result(response)
@@ -182,8 +189,9 @@ def get_open_orders(
     open_only: int = 0,
     limit: int = 50,
     category: str = "linear",
+    settle_coin: str | None = None,
 ) -> list[dict]:
-    """Get open orders with cursor-based pagination."""
+    """Get open orders with cursor-based pagination. When no symbol, settle_coin is required."""
     all_orders: list[dict] = []
     cursor: str | None = None
 
@@ -197,8 +205,10 @@ def get_open_orders(
         }
         if symbol:
             kwargs["symbol"] = symbol
+        elif settle_coin:
+            kwargs["settleCoin"] = settle_coin
         else:
-            kwargs["settleCoin"] = "USDT"
+            raise ValueError("get_open_orders requires either symbol or settle_coin")
         if order_id:
             kwargs["orderId"] = order_id
         if order_link_id:
@@ -228,8 +238,9 @@ def get_order_history(
     order_filter: str | None = None,
     limit: int = 50,
     category: str = "linear",
+    settle_coin: str | None = None,
 ) -> dict:
-    """Get order history."""
+    """Get order history. When no symbol, settle_coin is required."""
     client._private_limiter.acquire()
 
     time_params = time_range.to_bybit_params()
@@ -243,8 +254,10 @@ def get_order_history(
     }
     if symbol:
         kwargs["symbol"] = symbol
+    elif settle_coin:
+        kwargs["settleCoin"] = settle_coin
     else:
-        kwargs["settleCoin"] = "USDT"
+        raise ValueError("get_order_history requires either symbol or settle_coin")
     if order_id:
         kwargs["orderId"] = order_id
     if order_link_id:
@@ -374,8 +387,9 @@ def get_executions(
     exec_type: str | None = None,
     limit: int = 50,
     category: str = "linear",
+    settle_coin: str | None = None,
 ) -> list[dict]:
-    """Get trade execution history."""
+    """Get trade execution history. When no symbol, settle_coin is required."""
     client._private_limiter.acquire()
 
     time_params = time_range.to_bybit_params()
@@ -389,6 +403,8 @@ def get_executions(
     }
     if symbol:
         kwargs["symbol"] = symbol
+    elif settle_coin:
+        kwargs["settleCoin"] = settle_coin
     if order_id:
         kwargs["orderId"] = order_id
     if exec_type:
@@ -406,8 +422,9 @@ def get_closed_pnl(
     limit: int = 50,
     cursor: str | None = None,
     category: str = "linear",
+    settle_coin: str | None = None,
 ) -> dict:
-    """Get closed position PnL history."""
+    """Get closed position PnL history. When no symbol, settle_coin is required."""
     client._private_limiter.acquire()
 
     time_params = time_range.to_bybit_params()
@@ -421,6 +438,8 @@ def get_closed_pnl(
     }
     if symbol:
         kwargs["symbol"] = symbol
+    elif settle_coin:
+        kwargs["settleCoin"] = settle_coin
     if cursor:
         kwargs["cursor"] = cursor
 

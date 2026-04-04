@@ -51,7 +51,7 @@ def backtest_indicators_tool(
 
     Args:
         play_id: Play identifier
-        data_env: Data environment ("live" or "demo")
+        data_env: Data environment ("live")
         start: Window start (for computing actual values)
         end: Window end
         plays_dir: Override Play directory
@@ -244,9 +244,11 @@ def backtest_data_fix_tool(
             end = utc_now()
         else:
             end = normalize_timestamp(end)
+        assert end is not None  # utc_now() / normalize_timestamp always returns datetime for non-None input
 
         if start:
             start = normalize_timestamp(start)
+            assert start is not None  # normalize_timestamp returns datetime for non-None input
             requested_days = (end - start).days
 
             if requested_days > max_lookback_days:

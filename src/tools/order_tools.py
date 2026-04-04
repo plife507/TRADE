@@ -31,7 +31,7 @@ def set_leverage_tool(symbol: str, leverage: int, trading_env: str | None = None
     Args:
         symbol: Trading symbol (e.g., "BTCUSDT")
         leverage: Leverage value (1-125, capped by risk settings)
-        trading_env: Optional trading environment ("demo" or "live") for validation
+        trading_env: Optional trading environment ("live") for validation
     
     Returns:
         ToolResult with success status
@@ -77,7 +77,7 @@ def market_buy_tool(symbol: str, usd_amount: float, trading_env: str | None = No
     Args:
         symbol: Trading symbol
         usd_amount: Position size in USD
-        trading_env: Optional trading environment ("demo" or "live") for validation
+        trading_env: Optional trading environment ("live") for validation
 
     Returns:
         ToolResult with order details
@@ -100,7 +100,7 @@ def market_sell_tool(symbol: str, usd_amount: float, trading_env: str | None = N
     Args:
         symbol: Trading symbol
         usd_amount: Position size in USD
-        trading_env: Optional trading environment ("demo" or "live") for validation
+        trading_env: Optional trading environment ("live") for validation
 
     Returns:
         ToolResult with order details
@@ -131,7 +131,7 @@ def market_buy_with_tpsl_tool(
         usd_amount: Position size in USD
         take_profit: Take profit price (optional)
         stop_loss: Stop loss price (optional)
-        trading_env: Optional trading environment ("demo" or "live") for validation
+        trading_env: Optional trading environment ("live") for validation
 
     Returns:
         ToolResult with order details
@@ -164,7 +164,7 @@ def market_sell_with_tpsl_tool(
         usd_amount: Position size in USD
         take_profit: Take profit price (optional)
         stop_loss: Stop loss price (optional)
-        trading_env: Optional trading environment ("demo" or "live") for validation
+        trading_env: Optional trading environment ("live") for validation
 
     Returns:
         ToolResult with order details
@@ -188,7 +188,7 @@ def cancel_all_orders_tool(symbol: str | None = None, trading_env: str | None = 
     
     Args:
         symbol: Trading symbol (None for all symbols)
-        trading_env: Optional trading environment ("demo" or "live") for validation
+        trading_env: Optional trading environment ("live") for validation
     
     Returns:
         ToolResult with cancellation status
@@ -245,7 +245,7 @@ def limit_buy_tool(
         time_in_force: GTC (Good Till Cancel), IOC (Immediate or Cancel),
                       FOK (Fill or Kill), or PostOnly
         reduce_only: If True, only reduce position (close only)
-        trading_env: Optional trading environment ("demo" or "live") for validation
+        trading_env: Optional trading environment ("live") for validation
 
     Returns:
         ToolResult with order details
@@ -281,7 +281,7 @@ def limit_sell_tool(
         price: Limit price
         time_in_force: GTC, IOC, FOK, or PostOnly
         reduce_only: If True, only reduce position (close only)
-        trading_env: Optional trading environment ("demo" or "live") for validation
+        trading_env: Optional trading environment ("live") for validation
 
     Returns:
         ToolResult with order details
@@ -317,7 +317,7 @@ def partial_close_position_tool(
         symbol: Trading symbol
         close_percent: Percentage of position to close (0-100)
         price: Optional limit price (None for market order)
-        trading_env: Optional trading environment ("demo" or "live") for validation
+        trading_env: Optional trading environment ("live") for validation
     
     Returns:
         ToolResult with close order details
@@ -436,7 +436,7 @@ def stop_market_buy_tool(
                           2=trigger when price FALLS to trigger_price
         trigger_by: LastPrice, MarkPrice, or IndexPrice
         reduce_only: If True, only reduce position (close only)
-        trading_env: Optional trading environment ("demo" or "live") for validation
+        trading_env: Optional trading environment ("live") for validation
 
     Returns:
         ToolResult with order details
@@ -491,7 +491,7 @@ def stop_market_sell_tool(
                           2=trigger when price FALLS to trigger_price
         trigger_by: LastPrice, MarkPrice, or IndexPrice
         reduce_only: If True, only reduce position (close only)
-        trading_env: Optional trading environment ("demo" or "live") for validation
+        trading_env: Optional trading environment ("live") for validation
 
     Returns:
         ToolResult with order details
@@ -547,7 +547,7 @@ def stop_limit_buy_tool(
         trigger_by: LastPrice, MarkPrice, or IndexPrice
         time_in_force: GTC, IOC, FOK, or PostOnly
         reduce_only: If True, only reduce position (close only)
-        trading_env: Optional trading environment ("demo" or "live") for validation
+        trading_env: Optional trading environment ("live") for validation
 
     Returns:
         ToolResult with order details
@@ -607,7 +607,7 @@ def stop_limit_sell_tool(
         trigger_by: LastPrice, MarkPrice, or IndexPrice
         time_in_force: GTC, IOC, FOK, or PostOnly
         reduce_only: If True, only reduce position (close only)
-        trading_env: Optional trading environment ("demo" or "live") for validation
+        trading_env: Optional trading environment ("live") for validation
 
     Returns:
         ToolResult with order details
@@ -660,7 +660,7 @@ def get_open_orders_tool(
         order_filter: 'Order' (normal), 'StopOrder' (conditional), 
                      'tpslOrder' (TP/SL), or None for all
         limit: Maximum orders to return (1-50)
-        trading_env: Optional trading environment ("demo" or "live") for validation
+        trading_env: Optional trading environment ("live") for validation
     
     Returns:
         ToolResult with open orders list
@@ -729,7 +729,7 @@ def cancel_order_tool(
         symbol: Trading symbol
         order_id: Order ID to cancel (or use order_link_id)
         order_link_id: Custom order ID to cancel (or use order_id)
-        trading_env: Optional trading environment ("demo" or "live") for validation
+        trading_env: Optional trading environment ("live") for validation
     
     Returns:
         ToolResult with success status
@@ -800,7 +800,7 @@ def amend_order_tool(
         take_profit: New TP price (optional)
         stop_loss: New SL price (optional)
         trigger_price: New trigger price for stop orders (optional)
-        trading_env: Optional trading environment ("demo" or "live") for validation
+        trading_env: Optional trading environment ("live") for validation
     
     Returns:
         ToolResult with success status
@@ -886,7 +886,7 @@ def batch_market_orders_tool(orders: list[dict[str, object]], trading_env: str |
             - usd_amount: Amount in USD
             - take_profit: Optional TP price
             - stop_loss: Optional SL price
-        trading_env: Optional trading environment ("demo" or "live") for validation
+        trading_env: Optional trading environment ("live") for validation
     
     Example:
         orders = [
@@ -955,7 +955,7 @@ def batch_limit_orders_tool(orders: list[dict[str, object]], trading_env: str | 
             - take_profit: Optional TP price
             - stop_loss: Optional SL price
             - reduce_only: Optional (default False)
-        trading_env: Optional trading environment ("demo" or "live") for validation
+        trading_env: Optional trading environment ("live") for validation
     
     Example:
         orders = [
@@ -1025,7 +1025,7 @@ def batch_cancel_orders_tool(orders: list[dict[str, str]], trading_env: str | No
             - symbol: Trading symbol
             - orderId: Order ID to cancel (or orderLinkId)
             - orderLinkId: Custom order ID (or orderId)
-        trading_env: Optional trading environment ("demo" or "live") for validation
+        trading_env: Optional trading environment ("live") for validation
     
     Example:
         orders = [

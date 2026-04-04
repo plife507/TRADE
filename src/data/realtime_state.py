@@ -683,7 +683,7 @@ class RealtimeState:
 
         # Require that we received wallet data at least once (REST seed or WS)
         with self._lock:
-            has_wallet = bool(self._wallet.get("USDT"))
+            has_wallet = bool(self._wallet)  # Any coin counts (UTA multi-coin)
             has_metrics = self._account_metrics is not None
 
         if not has_wallet and not has_metrics:
@@ -769,8 +769,8 @@ class RealtimeState:
         """Get a summary of current state."""
         with self._lock:
             total_unrealized_pnl = sum(p.unrealized_pnl for p in self._positions.values())
-            usdt_wallet = self._wallet.get("USDT")
-            
+            metrics = self._account_metrics
+
             return {
                 "connected": {
                     "public": self.is_public_ws_connected,
@@ -784,8 +784,9 @@ class RealtimeState:
                     "positions": len(self._positions),
                     "open_orders": len(self._orders),
                     "unrealized_pnl": total_unrealized_pnl,
-                    "balance": usdt_wallet.wallet_balance if usdt_wallet else 0,
-                    "available": usdt_wallet.available_balance if usdt_wallet else 0,
+                    "balance": metrics.total_wallet_balance if metrics else 0,
+                    "available": metrics.total_available_balance if metrics else 0,
+                    "equity": metrics.total_equity if metrics else 0,
                 },
                 "updates": dict(self._update_counts),
             }

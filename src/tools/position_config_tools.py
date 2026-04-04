@@ -33,7 +33,7 @@ def set_risk_limit_tool(symbol: str, risk_id: int, trading_env: str | None = Non
     Args:
         symbol: Trading symbol
         risk_id: Risk limit ID from get_risk_limits_tool()
-        trading_env: Optional trading environment ("demo" or "live") for validation
+        trading_env: Optional trading environment ("live") for validation
 
     Returns:
         ToolResult with success status
@@ -77,7 +77,7 @@ def get_risk_limits_tool(symbol: str, trading_env: str | None = None) -> ToolRes
 
     Args:
         symbol: Trading symbol
-        trading_env: Optional trading environment ("demo" or "live") for validation
+        trading_env: Optional trading environment ("live") for validation
 
     Returns:
         ToolResult with risk limit tiers
@@ -117,7 +117,7 @@ def set_tp_sl_mode_tool(symbol: str, full_mode: bool, trading_env: str | None = 
     Args:
         symbol: Trading symbol
         full_mode: True for Full (entire position), False for Partial
-        trading_env: Optional trading environment ("demo" or "live") for validation
+        trading_env: Optional trading environment ("live") for validation
 
     Returns:
         ToolResult with success status
@@ -162,7 +162,7 @@ def set_auto_add_margin_tool(symbol: str, enabled: bool, trading_env: str | None
     Args:
         symbol: Trading symbol
         enabled: True to enable, False to disable
-        trading_env: Optional trading environment ("demo" or "live") for validation
+        trading_env: Optional trading environment ("live") for validation
 
     Returns:
         ToolResult with success status
@@ -207,7 +207,7 @@ def modify_position_margin_tool(symbol: str, margin: float, trading_env: str | N
     Args:
         symbol: Trading symbol
         margin: Amount to add (positive) or reduce (negative)
-        trading_env: Optional trading environment ("demo" or "live") for validation
+        trading_env: Optional trading environment ("live") for validation
 
     Returns:
         ToolResult with success status
@@ -256,7 +256,7 @@ def switch_margin_mode_tool(symbol: str, isolated: bool, leverage: int | None = 
         symbol: Trading symbol
         isolated: True for isolated, False for cross
         leverage: Leverage to set (uses default if None)
-        trading_env: Optional trading environment ("demo" or "live") for validation
+        trading_env: Optional trading environment ("live") for validation
 
     Returns:
         ToolResult with success status
@@ -305,7 +305,7 @@ def switch_position_mode_tool(hedge_mode: bool, trading_env: str | None = None) 
     Args:
         hedge_mode: True for hedge mode (both Buy & Sell),
                    False for one-way mode (Buy OR Sell)
-        trading_env: Optional trading environment ("demo" or "live") for validation
+        trading_env: Optional trading environment ("live") for validation
 
     Returns:
         ToolResult with success status

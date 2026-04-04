@@ -127,70 +127,58 @@ class BybitClient:
     Provides a unified interface for:
     - HTTP REST API calls (market data, account, trading)
     - WebSocket streams (orderbook, trades, positions)
-    - Demo and live trading modes
-    
+
     Usage:
-        # Demo trading (paper trading)
-        client = BybitClient(api_key="...", api_secret="...", use_demo=True)
-        
-        # Live trading
-        client = BybitClient(api_key="...", api_secret="...", use_demo=False)
-        
+        # Authenticated trading
+        client = BybitClient(api_key="...", api_secret="...")
+
         # Public data only (no auth needed)
         client = BybitClient()
         df = client.get_klines("BTCUSDT", interval="15")
     """
-    
+
     def __init__(
         self,
         api_key: str | None = None,
         api_secret: str | None = None,
-        use_demo: bool = True,
         recv_window: int = 20000,
         log_requests: bool = False,
     ):
         """
-        Initialize Bybit client with official pybit library.
-        
+        Initialize Bybit client with official pybit library (LIVE only).
+
         Args:
             api_key: API key for authentication
             api_secret: API secret for authentication
-            use_demo: True for DEMO (fake money), False for LIVE (real money)
             recv_window: Request timeout window in milliseconds
             log_requests: Whether to log HTTP requests
         """
         self.api_key = api_key
         self.api_secret = api_secret
-        self.use_demo = use_demo
         self.recv_window = recv_window
-        
+
         self._time_offset_ms = 0
-        
+
         self._session = HTTP(
             testnet=False,
-            demo=use_demo,
+            demo=False,
             api_key=api_key,
             api_secret=api_secret,
             recv_window=recv_window,
             log_requests=log_requests,
             return_response_headers=True,
         )
-        
+
         self.logger = get_module_logger(__name__)
-        
+
         self._sync_server_time()
-        
-        # Only two environments: DEMO and LIVE
-        if use_demo:
-            self.base_url = "https://api-demo.bybit.com"
-        else:
-            self.base_url = "https://api.bybit.com"
-        
-        mode_str = "DEMO" if use_demo else "LIVE"
+
+        self.base_url = "https://api.bybit.com"
+
         auth_status = "authenticated" if api_key else "public-only"
         self.logger.info(
-            f"BybitClient initialized: mode={mode_str}, "
-            f"base_url={self.base_url}, auth={auth_status}"
+            "BybitClient initialized: mode=LIVE, "
+            "base_url=%s, auth=%s", self.base_url, auth_status
         )
         
         self._limiters = create_bybit_limiters()
@@ -464,16 +452,18 @@ class BybitClient:
         return trd.cancel_order(self, symbol, order_id, order_link_id, category)
     
     @handle_pybit_errors
-    def cancel_all_orders(self, symbol: str | None = None, category: str = "linear") -> dict:
+    def cancel_all_orders(self, symbol: str | None = None, category: str = "linear",
+                          settle_coin: str | None = None) -> dict:
         from . import bybit_trading as trd
-        return trd.cancel_all_orders(self, symbol, category)
-    
+        return trd.cancel_all_orders(self, symbol, category, settle_coin)
+
     @handle_pybit_errors
     def get_open_orders(self, symbol: str | None = None, order_id: str | None = None, order_link_id: str | None = None,
-                        open_only: int = 0, limit: int = 50, category: str = "linear") -> list[dict]:
+                        open_only: int = 0, limit: int = 50, category: str = "linear",
+                        settle_coin: str | None = None) -> list[dict]:
         from . import bybit_trading as trd
-        return trd.get_open_orders(self, symbol, order_id, order_link_id, open_only, limit, category)
-    
+        return trd.get_open_orders(self, symbol, order_id, order_link_id, open_only, limit, category, settle_coin)
+
     @handle_pybit_errors
     def get_order_history(self, time_range: TimeRange, symbol: str | None = None, **kwargs) -> dict:
         from . import bybit_trading as trd
@@ -564,9 +554,9 @@ class BybitClient:
     
     # ==================== WebSocket (delegated) ====================
     
-    def connect_public_ws(self, channel_type: str = "linear", use_live_for_market_data: bool = False) -> WebSocket:
+    def connect_public_ws(self, channel_type: str = "linear") -> WebSocket:
         from . import bybit_websocket as ws
-        return ws.connect_public_ws(self, channel_type, use_live_for_market_data)
+        return ws.connect_public_ws(self, channel_type)
     
     def connect_private_ws(self) -> WebSocket:
         from . import bybit_websocket as ws

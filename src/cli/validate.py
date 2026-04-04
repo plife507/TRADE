@@ -1024,86 +1024,6 @@ def _gate_exchange_market_data() -> GateResult:
     )
 
 
-def _gate_exchange_order_flow() -> GateResult:
-    """EX4: Place limit buy -> get open orders -> cancel (demo mode)."""
-    start = time.perf_counter()
-    failures: list[str] = []
-    checked = 0
-
-    try:
-        from src.config.config import get_config
-        from src.tools import (
-            get_price_tool,
-            limit_buy_tool,
-            get_open_orders_tool,
-            cancel_all_orders_tool,
-            set_leverage_tool,
-        )
-
-        config = get_config()
-        if not config.bybit.use_demo:
-            return GateResult(
-                gate_id="EX4",
-                name="Order Flow",
-                passed=True,
-                checked=0,
-                duration_sec=time.perf_counter() - start,
-                detail="skipped (not demo mode)",
-                failures=[],
-            )
-
-        symbol = config.smoke.symbols[-1] if config.smoke.symbols else "SOLUSDT"
-        usd_size = config.smoke.usd_size
-
-        # Set leverage
-        checked += 1
-        set_leverage_tool(symbol, 2)
-
-        # Get price
-        checked += 1
-        price_result = get_price_tool(symbol)
-        if not price_result.success or not price_result.data:
-            failures.append(f"get price: {price_result.error}")
-            return GateResult(
-                gate_id="EX4", name="Order Flow", passed=False,
-                checked=checked, duration_sec=time.perf_counter() - start,
-                detail="price fetch failed", failures=failures,
-            )
-
-        current_price = float(price_result.data.get("price", 0))
-        limit_price = round(current_price * 0.90, 2)  # 10% below for safety
-
-        # Place limit buy
-        checked += 1
-        buy_result = limit_buy_tool(symbol, usd_size, limit_price)
-        if not buy_result.success:
-            failures.append(f"limit buy: {buy_result.error}")
-        else:
-            # Verify open orders
-            checked += 1
-            orders_result = get_open_orders_tool(symbol=symbol)
-            if not orders_result.success:
-                failures.append(f"open orders: {orders_result.error}")
-
-            # Cancel all
-            checked += 1
-            cancel_result = cancel_all_orders_tool(symbol=symbol)
-            if not cancel_result.success:
-                failures.append(f"cancel: {cancel_result.error}")
-
-    except Exception as e:
-        failures.append(f"Order flow: {e}")
-
-    return GateResult(
-        gate_id="EX4",
-        name="Order Flow",
-        passed=len(failures) == 0,
-        checked=checked,
-        duration_sec=time.perf_counter() - start,
-        detail=f"{checked} steps",
-        failures=failures,
-    )
-
 
 def _gate_exchange_diagnostics() -> GateResult:
     """EX5: Rate limits, WebSocket status, health check, API environment."""
@@ -1711,7 +1631,6 @@ def run_validation(
             _gate_exchange_connectivity,
             _gate_exchange_account,
             _gate_exchange_market_data,
-            _gate_exchange_order_flow,
             _gate_exchange_diagnostics,
         ]
         results = _run_gates(

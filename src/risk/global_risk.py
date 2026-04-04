@@ -230,9 +230,9 @@ class GlobalRiskView:
             balance = exchange.get_balance()
             
             if balance:
-                snapshot.total_wallet_balance = balance.get('total', 0)
+                snapshot.total_equity = balance.get('total', 0)
+                snapshot.total_wallet_balance = balance.get('wallet_balance', 0)
                 snapshot.total_available_balance = balance.get('available', 0)
-                snapshot.total_equity = balance.get('total', 0)  # Approximate
                 self.logger.debug("Risk snapshot enriched from REST: balance=$%.2f", snapshot.total_wallet_balance)
         except Exception as e:
             self.logger.warning("Failed to enrich risk snapshot from REST: %s", e)

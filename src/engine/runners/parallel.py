@@ -19,9 +19,9 @@ Usage:
     )
 
 Note:
-    Live and Demo modes use global singletons (RealtimeState, RealtimeBootstrap)
+    Live and Shadow modes use global singletons (RealtimeState, RealtimeBootstrap)
     and cannot be run in parallel within the same process. Use separate processes
-    for concurrent live/demo instances.
+    for concurrent live/shadow instances.
 """
 
 
@@ -71,7 +71,7 @@ def _run_single_backtest_process(
     Args:
         play_id: Play identifier to backtest
         plays_dir: Optional override for plays directory
-        env: Data environment ("backtest", "live", or "demo")
+        env: Data environment ("backtest" or "live")
         start: Optional start datetime
         end: Optional end datetime
 
@@ -160,7 +160,7 @@ def run_backtests_parallel(
         play_ids: List of Play identifiers to backtest
         max_workers: Max parallel processes (default: CPU count - 1, min 1)
         plays_dir: Optional override for plays directory
-        env: Data environment ("backtest", "live", or "demo")
+        env: Data environment ("backtest" or "live")
         start: Optional start datetime for all backtests
         end: Optional end datetime for all backtests
         progress_callback: Optional callback(play_id, status, result) for progress

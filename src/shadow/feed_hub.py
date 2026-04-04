@@ -53,19 +53,15 @@ class SharedFeedHub:
         if symbol in self._feeds:
             return self._states[symbol]
 
-        # Shadow always uses LIVE WS (stream.bybit.com) for real market data.
-        # Demo WS (stream-demo.bybit.com) returns 404 on public/linear.
         from ..exchanges.bybit_client import BybitClient
         from ..config.config import get_config
 
         app_config = get_config()
         api_key, api_secret = app_config.bybit.get_credentials()
 
-        # Force live WS regardless of trading mode config
         client = BybitClient(
             api_key=api_key,
             api_secret=api_secret,
-            use_demo=False,  # Always live for public market data
         )
 
         state = RealtimeState()

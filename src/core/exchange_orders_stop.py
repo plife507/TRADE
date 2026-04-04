@@ -35,7 +35,6 @@ def stop_market_buy(
     from .exchange_manager import OrderResult
 
     try:
-        manager._validate_trading_operation()
 
         price = manager.get_price(symbol)
         trigger_price = inst.round_price(manager, symbol, trigger_price)
@@ -84,7 +83,6 @@ def stop_market_sell(
     from .exchange_manager import OrderResult
 
     try:
-        manager._validate_trading_operation()
 
         price = manager.get_price(symbol)
         trigger_price = inst.round_price(manager, symbol, trigger_price)
@@ -134,7 +132,6 @@ def stop_limit_buy(
     from .exchange_manager import OrderResult
 
     try:
-        manager._validate_trading_operation()
 
         trigger_price = inst.round_price(manager, symbol, trigger_price)
         limit_price = inst.round_price(manager, symbol, limit_price)
@@ -184,7 +181,6 @@ def stop_limit_sell(
     from .exchange_manager import OrderResult
 
     try:
-        manager._validate_trading_operation()
 
         trigger_price = inst.round_price(manager, symbol, trigger_price)
         limit_price = inst.round_price(manager, symbol, limit_price)
@@ -234,7 +230,6 @@ def create_conditional_order(
     from .exchange_manager import OrderResult, TriggerDirection
     
     try:
-        manager._validate_trading_operation()
         
         if trigger_direction is None:
             current_price = manager.get_price(symbol)

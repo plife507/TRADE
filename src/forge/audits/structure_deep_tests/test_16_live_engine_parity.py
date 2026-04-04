@@ -87,7 +87,7 @@ def _setup_both_paths(max_bars: int | None = None):
     bt_ms = IncrementalMarketStructure({"confirmation_close": True}, deps={"swing": bt_sw})
 
     # Live path: LiveDataProvider
-    live_dp = LiveDataProvider(play, demo=True)
+    live_dp = LiveDataProvider(play)
     warmup_n = live_dp._warmup_bars
     live_dp._low_tf_indicators.initialize_from_history(
         candles[:warmup_n],

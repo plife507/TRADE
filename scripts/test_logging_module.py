@@ -527,7 +527,7 @@ def test_08_bind_clear_lifecycle() -> None:
         logger = get_module_logger("test.lifecycle")
 
         # Phase 1: bind context, log
-        bind_engine_context(play_hash="bind1234bind1234", symbol="ETHUSDT", mode="demo")
+        bind_engine_context(play_hash="bind1234bind1234", symbol="ETHUSDT", mode="live")
         logger.info("bound_marker")
 
         # Phase 2: clear context, log
@@ -554,7 +554,7 @@ def test_08_bind_clear_lifecycle() -> None:
                 bound_ok = (
                     entry.get("play_hash") == "bind1234bind1234"
                     and entry.get("symbol") == "ETHUSDT"
-                    and entry.get("mode") == "demo"
+                    and entry.get("mode") == "live"
                 )
             elif "cleared_marker" in evt:
                 cleared_ok = (

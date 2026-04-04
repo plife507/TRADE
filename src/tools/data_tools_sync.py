@@ -26,7 +26,7 @@ def sync_symbols_tool(
         period: Period string (e.g., "1D", "1W", "1M", "3M", "6M", "1Y")
         timeframes: List of timeframes (e.g., ["15m", "1h", "4h", "D"])
         progress_callback: Optional callback for progress updates
-        env: Data environment ("live" or "demo"). Defaults to "live".
+        env: Data environment ("live"). Defaults to "live".
     
     Returns:
         ToolResult with sync results
@@ -105,7 +105,7 @@ def sync_range_tool(
         start: Start datetime
         end: End datetime
         timeframes: List of timeframes
-        env: Data environment ("live" or "demo"). Defaults to "live".
+        env: Data environment ("live"). Defaults to "live".
     
     Returns:
         ToolResult with sync results
@@ -154,7 +154,7 @@ def sync_data_tool(
         symbol: Specific symbol to fill gaps for (None for all)
         timeframe: Specific timeframe to fill gaps for (None for all)
         progress_callback: Optional callback for progress updates
-        env: Data environment ("live" or "demo"). Defaults to "live".
+        env: Data environment ("live"). Defaults to "live".
     
     Returns:
         ToolResult with gap fill results
@@ -211,7 +211,7 @@ def heal_data_tool(
         symbol: Specific symbol to heal (None for all)
         fix_issues: If True, automatically fix found issues
         fill_gaps_after: If True, fill gaps after fixing other issues
-        env: Data environment ("live" or "demo"). Defaults to "live".
+        env: Data environment ("live"). Defaults to "live".
     
     Returns:
         ToolResult with heal report
@@ -256,7 +256,7 @@ def delete_symbol_tool(symbol: str, vacuum: bool = True, env: DataEnv = DEFAULT_
     Args:
         symbol: Symbol to delete
         vacuum: Whether to vacuum the database after deletion
-        env: Data environment ("live" or "demo"). Defaults to "live".
+        env: Data environment ("live"). Defaults to "live".
     
     Returns:
         ToolResult with deletion result
@@ -298,7 +298,7 @@ def cleanup_empty_symbols_tool(env: DataEnv = DEFAULT_DATA_ENV) -> ToolResult:
     Remove symbols with no data (invalid symbols).
     
     Args:
-        env: Data environment ("live" or "demo"). Defaults to "live".
+        env: Data environment ("live"). Defaults to "live".
     
     Returns:
         ToolResult with cleanup results
@@ -331,7 +331,7 @@ def vacuum_database_tool(env: DataEnv = DEFAULT_DATA_ENV) -> ToolResult:
     Vacuum the database to reclaim space.
     
     Args:
-        env: Data environment ("live" or "demo"). Defaults to "live".
+        env: Data environment ("live"). Defaults to "live".
     
     Returns:
         ToolResult with vacuum status
@@ -364,7 +364,7 @@ def delete_all_data_tool(vacuum: bool = True, env: DataEnv = DEFAULT_DATA_ENV) -
     
     Args:
         vacuum: Whether to vacuum the database after deletion (default True)
-        env: Data environment ("live" or "demo"). Defaults to "live".
+        env: Data environment ("live"). Defaults to "live".
     
     Returns:
         ToolResult with deletion stats (rows deleted per table)
@@ -442,7 +442,7 @@ def sync_funding_tool(
         symbols: List of symbols to sync
         period: Period string (e.g., "1M", "3M", "6M", "1Y")
         progress_callback: Optional callback for progress updates
-        env: Data environment ("live" or "demo"). Defaults to "live".
+        env: Data environment ("live"). Defaults to "live".
     
     Returns:
         ToolResult with sync results
@@ -497,7 +497,7 @@ def sync_open_interest_tool(
         period: Period string (e.g., "1M", "3M", "6M", "1Y")
         interval: Data interval (5min, 15min, 30min, 1h, 4h, D)
         progress_callback: Optional callback for progress updates
-        env: Data environment ("live" or "demo"). Defaults to "live".
+        env: Data environment ("live"). Defaults to "live".
     
     Returns:
         ToolResult with sync results

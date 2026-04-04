@@ -39,52 +39,42 @@ def _install_ws_cleanup_hook():
 def connect_public_ws(
     client: "BybitClient",
     channel_type: str = "linear",
-    use_live_for_market_data: bool = False,
 ) -> WebSocket:
     """
-    Connect to public WebSocket stream for market data.
-    
+    Connect to public WebSocket stream for market data (LIVE).
+
     Args:
         client: BybitClient instance
         channel_type: Channel type (linear, inverse, spot, option)
-        use_live_for_market_data: If True, use LIVE stream even when client is in DEMO mode
     """
     if client._ws_public is not None:
         return client._ws_public
-    
-    # Determine stream mode: LIVE or DEMO
-    if use_live_for_market_data:
-        ws_demo = False
-        stream_type = "LIVE"
-    else:
-        ws_demo = client.use_demo
-        stream_type = "DEMO" if client.use_demo else "LIVE"
-    
+
     client._ws_public = WebSocket(
         testnet=False,
-        demo=ws_demo,
+        demo=False,
         channel_type=channel_type,
         retries=5,
         restart_on_error=True,
         ping_interval=20,
         ping_timeout=15,
     )
-    
-    client.logger.info("Connected to public WebSocket (%s, %s)", channel_type, stream_type)
+
+    client.logger.info("Connected to public WebSocket (%s, LIVE)", channel_type)
     return client._ws_public
 
 
 def connect_private_ws(client: "BybitClient") -> WebSocket:
-    """Connect to private WebSocket stream for positions/orders."""
+    """Connect to private WebSocket stream for positions/orders (LIVE)."""
     if client._ws_private is not None:
         return client._ws_private
-    
+
     if not client.api_key or not client.api_secret:
         raise ValueError("API credentials required for private WebSocket")
-    
+
     client._ws_private = WebSocket(
         testnet=False,
-        demo=client.use_demo,
+        demo=False,
         channel_type="private",
         api_key=client.api_key,
         api_secret=client.api_secret,
@@ -93,11 +83,8 @@ def connect_private_ws(client: "BybitClient") -> WebSocket:
         ping_interval=20,
         ping_timeout=15,
     )
-    
-    # Only two modes: DEMO or LIVE
-    stream_type = "DEMO (FAKE MONEY)" if client.use_demo else "LIVE (REAL MONEY)"
-    
-    client.logger.info("Connected to private WebSocket (%s)", stream_type)
+
+    client.logger.info("Connected to private WebSocket (LIVE)")
     return client._ws_private
 
 

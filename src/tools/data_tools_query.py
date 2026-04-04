@@ -33,7 +33,7 @@ def get_funding_history_tool(
         period: Period string (e.g., "1M", "3M") - alternative to start/end
         start: Start datetime or ISO string (e.g., "2024-01-01" or "2024-01-01T00:00:00")
         end: End datetime or ISO string (e.g., "2024-06-01" or "2024-06-01T23:59:59")
-        env: Data environment ("live" or "demo"). Defaults to "live".
+        env: Data environment ("live"). Defaults to "live".
     
     Returns:
         ToolResult with funding rate data including:
@@ -143,7 +143,7 @@ def get_ohlcv_history_tool(
         start: Start datetime or ISO string (e.g., "2024-01-01" or "2024-01-01T00:00:00")
         end: End datetime or ISO string (e.g., "2024-06-01" or "2024-06-01T23:59:59")
         limit: Maximum number of candles to return (optional, defaults to all within range)
-        env: Data environment ("live" or "demo"). Defaults to "live".
+        env: Data environment ("live"). Defaults to "live".
     
     Returns:
         ToolResult with OHLCV data including:
@@ -262,7 +262,7 @@ def get_open_interest_history_tool(
         period: Period string (e.g., "1M", "3M") - alternative to start/end
         start: Start datetime or ISO string (e.g., "2024-01-01" or "2024-01-01T00:00:00")
         end: End datetime or ISO string (e.g., "2024-06-01" or "2024-06-01T23:59:59")
-        env: Data environment ("live" or "demo"). Defaults to "live".
+        env: Data environment ("live"). Defaults to "live".
     
     Returns:
         ToolResult with open interest data including:
@@ -365,7 +365,7 @@ def sync_to_now_tool(
     Args:
         symbols: List of symbols to sync forward
         timeframes: List of timeframes (e.g., ["15m", "1h", "4h"]) or None for all
-        env: Data environment ("live" or "demo"). Defaults to "live".
+        env: Data environment ("live"). Defaults to "live".
     
     Returns:
         ToolResult with per-symbol/timeframe counts
@@ -430,7 +430,7 @@ def sync_forward_tool(
     Args:
         symbols: List of symbols to sync and heal
         timeframes: List of timeframes (e.g., ["15m", "1h", "4h"]) or None for all
-        env: Data environment ("live" or "demo"). Defaults to "live".
+        env: Data environment ("live"). Defaults to "live".
 
     Returns:
         ToolResult with combined sync and gap-fill summary
@@ -530,7 +530,7 @@ def build_symbol_history_tool(
         period: How far back to sync ("1D", "1W", "1M", "3M", "6M", "1Y")
         timeframes: List of OHLCV timeframes (e.g., ["15m", "1h", "4h"]) or None for all
         oi_interval: Open interest interval (5min, 15min, 30min, 1h, 4h, D) or None for "1h"
-        env: Data environment ("live" or "demo"). Defaults to "live".
+        env: Data environment ("live"). Defaults to "live".
     
     Returns:
         ToolResult with combined sync summary for all data types

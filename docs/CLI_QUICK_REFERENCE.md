@@ -67,7 +67,6 @@ backtest play-normalize-batch --dir plays/ [--write]     # Batch normalize
 
 ```bash
 play run --play X --mode backtest [--json]              # Backtest via play engine
-play run --play X --mode demo [--headless] [--json]     # Demo trading (fake money)
 play run --play X --mode live --confirm [--json]        # Live trading (REAL MONEY)
 play run --play X --mode shadow [--json]                # Signal logging, no execution
 play status [--play X] [--json]                         # Check running instances

@@ -204,6 +204,32 @@ from .backtest_audit_tools import (
     backtest_audit_rollup_parity_tool,
 )
 
+# Portfolio tools (UTA management)
+from .portfolio_tools import (
+    get_uta_snapshot_tool,
+    get_portfolio_wallet_tool,
+    get_portfolio_risk_tool,
+    get_portfolio_exposure_tool,
+    resolve_instrument_tool,
+    list_instruments_tool,
+    list_sub_accounts_tool,
+    create_sub_account_tool,
+    fund_sub_account_tool,
+    withdraw_sub_account_tool,
+    get_sub_account_balance_tool,
+    get_sub_account_positions_tool,
+    freeze_sub_account_tool,
+    delete_sub_account_tool,
+    deploy_play_tool,
+    stop_play_tool,
+    get_play_status_tool,
+    rebalance_play_tool,
+    list_active_plays_tool,
+    recall_all_tool,
+    get_collateral_tiers_tool,
+    toggle_collateral_tool,
+)
+
 # Forge stress test tools
 from .forge_stress_test_tools import (
     forge_stress_test_tool,
@@ -346,4 +372,28 @@ __all__ = [
     "forge_generate_synthetic_data_tool",
     "forge_structure_parity_tool",
     "forge_indicator_parity_tool",
+
+    # Portfolio tools (UTA management)
+    "get_uta_snapshot_tool",
+    "get_portfolio_wallet_tool",
+    "get_portfolio_risk_tool",
+    "get_portfolio_exposure_tool",
+    "resolve_instrument_tool",
+    "list_instruments_tool",
+    "list_sub_accounts_tool",
+    "create_sub_account_tool",
+    "fund_sub_account_tool",
+    "withdraw_sub_account_tool",
+    "get_sub_account_balance_tool",
+    "get_sub_account_positions_tool",
+    "freeze_sub_account_tool",
+    "delete_sub_account_tool",
+    "deploy_play_tool",
+    "stop_play_tool",
+    "get_play_status_tool",
+    "rebalance_play_tool",
+    "list_active_plays_tool",
+    "recall_all_tool",
+    "get_collateral_tiers_tool",
+    "toggle_collateral_tool",
 ]

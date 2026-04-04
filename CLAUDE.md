@@ -95,7 +95,7 @@ All loggers live under `trade.*`. Never create orphan loggers.
 
 ### Backtest Event Journal
 
-Every backtest writes `events.jsonl` to its artifact folder via `BacktestJournal` (in `src/engine/journal.py`). Records fill and close events per trade. Live/demo uses `TradeJournal` which writes to `data/journal/`.
+Every backtest writes `events.jsonl` to its artifact folder via `BacktestJournal` (in `src/engine/journal.py`). Records fill and close events per trade. Live uses `TradeJournal` which writes to `data/journal/`.
 
 ## Hash Tracing
 
@@ -381,8 +381,7 @@ python trade_cli.py debug snapshot-plumbing --play X   # Snapshot field check
 python trade_cli.py debug determinism --run-a A --run-b B  # Compare runs
 python trade_cli.py debug metrics                      # Financial calc audit
 
-# Live/Demo
-python trade_cli.py play run --play X --mode demo   # Demo mode (no real money)
+# Live
 python trade_cli.py play run --play X --mode live --confirm  # Live (REAL MONEY)
 ```
 
@@ -450,11 +449,18 @@ See `docs/LIQUIDATION_PARITY_REVIEW.md` for full analysis.
 | Project status & active work | `docs/TODO.md` |
 | New feature specs (FVG, OB, etc.) | `docs/MARKET_STRUCTURE_FEATURES.md` |
 | DSL syntax (frozen) | `docs/PLAY_DSL_REFERENCE.md` |
+| DSL playbook (modular) | `docs/dsl/` (8 modules) |
 | Validation best practices | `docs/VALIDATION_BEST_PRACTICES.md` |
 | Synthetic data patterns | `docs/SYNTHETIC_DATA_REFERENCE.md` |
 | CLI patterns | `docs/CLI_QUICK_REFERENCE.md` |
 | Agent readiness scorecard | `docs/AGENT_READINESS_EVALUATION.md` |
+| Shadow exchange design | `docs/SHADOW_EXCHANGE_DESIGN.md` |
 | Shadow order fidelity review | `docs/SHADOW_ORDER_FIDELITY_REVIEW.md` |
+| VPS deployment | `docs/DEPLOYMENT_GUIDE.md` |
+| Multi-account architecture | `docs/MULTI_ACCOUNT_ARCHITECTURE.md` |
+| CRT + TBS strategy review | `docs/CRT_TBS_STRATEGY_REVIEW.md` |
+| Structure detection audit | `docs/STRUCTURE_DETECTION_AUDIT.md` |
+| TV parity verification design | `docs/TV_PARITY_DESIGN.md` |
 | System defaults | `config/defaults.yml` |
 
 ## Reference Documentation

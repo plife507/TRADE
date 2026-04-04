@@ -2,7 +2,7 @@
 Unified position sizing module for TRADE engines.
 
 This module provides a single source of truth for position sizing logic
-used by PlayEngine in all modes (backtest, demo, live).
+used by PlayEngine in all modes (backtest, live, shadow).
 
 Components:
     - SizingModel: Core sizing calculations

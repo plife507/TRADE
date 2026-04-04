@@ -70,7 +70,7 @@ class AutoSyncConfig:
     """Configuration for auto-sync behavior during preflight."""
     enabled: bool = False
     max_attempts: int = 2
-    data_env: str = "live"  # "live" or "demo"
+    data_env: str = "live"
 
     # Tool hooks for dependency injection (used in testing)
     sync_range_tool: Callable | None = None
