@@ -1,10 +1,9 @@
 version: "3.0.0"
-name: "ind_054_anchored_vol_profile"
+name: "ind_consolidated_derived_special"
 description: |
-  Indicator Suite - Anchored Volume Profile test.
-  Entry when price is above anchored POC during bullish trend.
-  Note: batch precomputation returns NaN placeholder; engine overwrites
-  bar-by-bar with swing-aware resets. This play tests registration only.
+  Consolidated indicator validation — Derived price and special indicators.
+  Covers: midprice, ohlc4, volume_profile, anchored_volume_profile, session_levels.
+  Entry: midprice > EMA 20 (representative derived price filter).
 
 symbol: "BTCUSDT"
 
@@ -25,29 +24,32 @@ account:
   slippage_bps: 2.0
 
 features:
-  atr_14:
-    indicator: atr
+  midprice_14:
+    indicator: midprice
     params: {length: 14}
+  ohlc4:
+    indicator: ohlc4
+    params: {}
+  vp:
+    indicator: volume_profile
+    params: {}
   avp:
     indicator: anchored_volume_profile
-    params:
-      num_buckets: 50
-      lookback: 50
+    params: {}
+  sl:
+    indicator: session_levels
+    params: {}
+  ema_20:
+    indicator: ema
+    params: {length: 20}
 
 structures:
-  exec:
-    - type: swing
-      key: swing
-      params: {left: 5, right: 5}
-    - type: trend
-      key: trend
-      uses: swing
+  exec: []
 
 actions:
   entry_long:
     all:
-      - ["trend.direction", "==", 1]
-      - ["atr_14", ">", 0]
+      - ["midprice_14", ">", "ema_20"]
 
 position_policy:
   mode: "long_only"

@@ -1,0 +1,78 @@
+version: "3.0.0"
+name: "ind_consolidated_trend_ma_long"
+description: |
+  Consolidated indicator validation — Moving Average trend filters (long).
+  Covers: ema, sma, wma, dema, tema, trima, zlma, kama, alma, linreg.
+  Entry: close > EMA 50 (representative trend filter).
+  All MAs declared in features to verify computation without error.
+
+symbol: "BTCUSDT"
+
+timeframes:
+  low_tf: "15m"
+  med_tf: "1h"
+  high_tf: "D"
+  exec: "low_tf"
+
+account:
+  starting_equity_usdt: 10000.0
+  max_leverage: 1.0
+  margin_mode: "isolated_usdt"
+  min_trade_notional_usdt: 10.0
+  fee_model:
+    taker_bps: 5.5
+    maker_bps: 2.0
+  slippage_bps: 2.0
+
+features:
+  ema_50:
+    indicator: ema
+    params: {length: 50}
+  sma_20:
+    indicator: sma
+    params: {length: 20}
+  wma_20:
+    indicator: wma
+    params: {length: 20}
+  dema_20:
+    indicator: dema
+    params: {length: 20}
+  tema_20:
+    indicator: tema
+    params: {length: 20}
+  trima_20:
+    indicator: trima
+    params: {length: 20}
+  zlma_20:
+    indicator: zlma
+    params: {length: 20}
+  kama_10:
+    indicator: kama
+    params: {length: 10}
+  alma_10:
+    indicator: alma
+    params: {length: 10}
+  linreg_14:
+    indicator: linreg
+    params: {length: 14}
+
+structures:
+  exec: []
+
+actions:
+  entry_long:
+    all:
+      - ["close", ">", "ema_50"]
+
+position_policy:
+  mode: "long_only"
+  exit_mode: "sl_tp_only"
+  max_positions_per_symbol: 1
+
+risk:
+  stop_loss_pct: 3.0
+  take_profit_pct: 6.0
+  max_position_pct: 100.0
+
+validation:
+  pattern: "trend_up_clean"

@@ -1,0 +1,72 @@
+version: "3.0.0"
+name: "ind_consolidated_bands_channels"
+description: |
+  Consolidated indicator validation — Bands and channel indicators.
+  Covers: bbands, kc, donchian, supertrend, aroon, vortex, dm, squeeze.
+  Entry: close < lower Bollinger band (representative mean-reversion).
+  All band/channel indicators declared to verify computation.
+
+symbol: "BTCUSDT"
+
+timeframes:
+  low_tf: "15m"
+  med_tf: "1h"
+  high_tf: "D"
+  exec: "low_tf"
+
+account:
+  starting_equity_usdt: 10000.0
+  max_leverage: 1.0
+  margin_mode: "isolated_usdt"
+  min_trade_notional_usdt: 10.0
+  fee_model:
+    taker_bps: 5.5
+    maker_bps: 2.0
+  slippage_bps: 2.0
+
+features:
+  bb_20_2:
+    indicator: bbands
+    params: {length: 20, std: 2.0}
+  kc_20_2:
+    indicator: kc
+    params: {length: 20, scalar: 2.0}
+  dc_20:
+    indicator: donchian
+    params: {length: 20}
+  supertrend_10_3:
+    indicator: supertrend
+    params: {length: 10, multiplier: 3.0}
+  aroon_25:
+    indicator: aroon
+    params: {length: 25}
+  vortex_14:
+    indicator: vortex
+    params: {length: 14}
+  dm_14:
+    indicator: dm
+    params: {length: 14}
+  sqz:
+    indicator: squeeze
+    params: {}
+
+structures:
+  exec: []
+
+actions:
+  entry_long:
+    all:
+      - ["close", "<", "bb_20_2.lower"]
+
+position_policy:
+  mode: "long_only"
+  exit_mode: "sl_tp_only"
+  max_positions_per_symbol: 1
+
+risk:
+  stop_loss_pct: 3.0
+  take_profit_pct: 6.0
+  max_position_pct: 100.0
+
+validation:
+  pattern: "range_wide"
