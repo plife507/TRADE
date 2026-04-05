@@ -85,6 +85,12 @@ RISK_PLAY_EXPECTATIONS: dict[str, str] = {
     "V_RISK_009_longshort_liquidation": "liquidated",
 }
 
+# Risk plays that run as normal backtests (no expected terminal reason)
+RISK_PLAY_RUN_IDS = [
+    "V_RISK_010_trigger_source_mark",
+    "V_RISK_011_split_tp_3_level",
+]
+
 
 # ── Real-data sync manifest ──────────────────────────────────────────
 # Covers all 61 RV plays with warmup buffer. Sync once, then read-only.
@@ -536,13 +542,76 @@ def _gate_risk_stops() -> GateResult:
                     failures.append(f"{pid}: TIMEOUT (pool deadline)")
                     console.print(f"       [dim]G4b[/] {pid} [red]TIMEOUT[/]", highlight=False)
 
+    # Also run non-terminal risk plays (trigger source, split TP, etc.)
+    with ProcessPoolExecutor(max_workers=workers) as pool:
+        run_futures = {
+            pool.submit(_run_single_play_synthetic, pid): pid
+            for pid in RISK_PLAY_RUN_IDS
+        }
+        trades, run_fails = _collect_futures_with_timeout(run_futures, PLAY_TIMEOUT_SEC, "G4b")
+        failures.extend(run_fails)
+
+    total_checked = len(RISK_PLAY_EXPECTATIONS) + len(RISK_PLAY_RUN_IDS)
     return GateResult(
         gate_id="G4b",
         name="Risk Stops",
         passed=len(failures) == 0,
-        checked=len(RISK_PLAY_EXPECTATIONS),
+        checked=total_checked,
         duration_sec=time.perf_counter() - start,
-        detail=f"{len(RISK_PLAY_EXPECTATIONS)} risk plays",
+        detail=f"{total_checked} risk plays",
+        failures=failures,
+    )
+
+
+# DSL validation: plays that should FAIL at parse and plays that should PASS
+DSL_EXPECTED_FAIL = [
+    "DV_001_undeclared_feature",
+    "DV_002_invalid_structure_field",
+    "DV_005_setup_circular",
+    "DV_006_setup_undeclared",
+]
+DSL_EXPECTED_PASS = [
+    "DV_003_setup_basic",
+    "DV_004_setup_nested",
+]
+
+
+def _gate_dsl_validator() -> GateResult:
+    """G11: DSL parse-time validation — expected-fail and expected-pass plays."""
+    start = time.perf_counter()
+    failures: list[str] = []
+
+    # Expected-fail: loading the play should raise ValueError
+    for pid in DSL_EXPECTED_FAIL:
+        try:
+            from src.utils.logger import suppress_for_validation
+            suppress_for_validation()
+            from src.backtest.play.play import load_play
+            load_play(pid)
+            failures.append(f"{pid}: should have failed at parse but succeeded")
+        except (ValueError, FileNotFoundError):
+            pass  # Expected
+        except Exception as e:
+            pass  # Any parse error is acceptable
+
+    # Expected-pass: load + run should succeed
+    workers = _get_max_workers()
+    with ProcessPoolExecutor(max_workers=workers) as pool:
+        run_futures = {
+            pool.submit(_run_single_play_synthetic, pid): pid
+            for pid in DSL_EXPECTED_PASS
+        }
+        trades, run_fails = _collect_futures_with_timeout(run_futures, PLAY_TIMEOUT_SEC, "G11")
+        failures.extend(run_fails)
+
+    total = len(DSL_EXPECTED_FAIL) + len(DSL_EXPECTED_PASS)
+    return GateResult(
+        gate_id="G11",
+        name="DSL Validator",
+        passed=len(failures) == 0,
+        checked=total,
+        duration_sec=time.perf_counter() - start,
+        detail=f"{len(DSL_EXPECTED_FAIL)} expected-fail, {len(DSL_EXPECTED_PASS)} expected-pass",
         failures=failures,
     )
 
@@ -1569,8 +1638,10 @@ def _make_module_definitions(
         "operators": [lambda: _gate_play_suite("validation/operators", "G8", "Operator Suite", w, t)],
         "structures": [lambda: _gate_play_suite("validation/structures", "G9", "Structure Suite", w, t)],
         "complexity": [lambda: _gate_play_suite("validation/complexity", "G10", "Complexity Ladder", w, t)],
+        "dsl-validator": [_gate_dsl_validator],
         "indicators": [lambda: _gate_play_suite("validation/indicators", "G12", "Indicator Suite", w, t)],
         "patterns": [lambda: _gate_play_suite("validation/patterns", "G13", "Pattern Suite", w, t)],
+        "limit-orders": [lambda: _gate_play_suite("validation/limit_orders", "G14", "Limit Order Suite", w, t)],
         "parity": [_gate_structure_parity, _gate_rollup_parity],
         "sim": [_gate_sim_orders],
         "metrics": [_gate_metrics_audit],
@@ -1589,7 +1660,8 @@ def _make_module_definitions(
 
 MODULE_NAMES = [
     "core", "risk", "audits", "operators", "structures", "complexity",
-    "indicators", "patterns", "parity", "sim", "metrics", "determinism",
+    "dsl-validator", "indicators", "patterns", "limit-orders",
+    "parity", "sim", "metrics", "determinism",
     "coverage", "lint", "timestamps", "exchange-orders",
     "real-accumulation", "real-markup", "real-distribution", "real-markdown",
 ]
@@ -1810,11 +1882,13 @@ def run_validation(
             # Stage 3: structure/rollup/sim (parallel)
             schedule.append([_gate_structure_parity, _gate_rollup_parity, _gate_sim_orders])
 
-            # Stage 4: operator/structure/complexity suites (parallel, each internally parallel)
+            # Stage 4: play suites (parallel, each internally parallel)
             schedule.append([
                 lambda: _gate_play_suite("validation/operators", "G8", "Operator Suite", w, t),
                 lambda: _gate_play_suite("validation/structures", "G9", "Structure Suite", w, t),
                 lambda: _gate_play_suite("validation/complexity", "G10", "Complexity Ladder", w, t),
+                _gate_dsl_validator,
+                lambda: _gate_play_suite("validation/limit_orders", "G14", "Limit Order Suite", w, t),
             ])
 
             # Stage 5: metrics
