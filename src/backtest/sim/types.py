@@ -103,6 +103,38 @@ class TriggerSource(str, Enum):
     INDEX_PRICE = "IndexPrice"
 
 
+@dataclass(frozen=True)
+class TpSlLevel:
+    """Single TP or SL level for multi-level exit management.
+
+    Bybit supports up to 5 TP/SL levels per position. Each level has:
+    - price: The trigger price for this level
+    - size_pct: Percentage of REMAINING position to close (1-100)
+    - trigger_by: Which price source to evaluate against
+
+    For single-level exits, use one level with size_pct=100.
+    For multi-level: size_pct values across untriggered levels should
+    represent the intended close fraction of remaining position.
+
+    Example (3-level TP on a long):
+        [TpSlLevel(price=105, size_pct=50),   # Close 50% at 105
+         TpSlLevel(price=110, size_pct=50),   # Close 50% of remaining at 110
+         TpSlLevel(price=120, size_pct=100)]  # Close rest at 120
+    """
+    price: float
+    size_pct: float = 100.0
+    trigger_by: TriggerSource = TriggerSource.LAST_PRICE
+    triggered: bool = False
+
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            "price": self.price,
+            "size_pct": self.size_pct,
+            "trigger_by": self.trigger_by.value,
+            "triggered": self.triggered,
+        }
+
+
 # StopReason imported from canonical location (no duplication)
 from ..types import StopReason
 
@@ -169,6 +201,8 @@ class Order:
     sl_trigger_by: TriggerSource = TriggerSource.LAST_PRICE
     # Price source for conditional order trigger (Bybit: triggerBy)
     trigger_by: TriggerSource = TriggerSource.LAST_PRICE
+    # Multi-level TP: list of (price, size_pct) tuples from signal computation
+    tp_levels_raw: list[tuple[float, float]] = field(default_factory=list)
     # Reference price used for SL/TP computation (signal bar close).
     # Used at fill time to adjust SL/TP for the actual fill price.
     sl_tp_ref_price: float | None = None
@@ -240,6 +274,11 @@ class Position:
     size_usdt: float
     stop_loss: float | None = None
     take_profit: float | None = None
+    # Multi-level TP/SL (Bybit supports up to 5 levels per side).
+    # When populated, _check_tp_sl_exits iterates levels for partial closes.
+    # stop_loss/take_profit fields are kept in sync as the "current active" price.
+    tp_levels: list[TpSlLevel] = field(default_factory=list)
+    sl_levels: list[TpSlLevel] = field(default_factory=list)
     fees_paid: float = 0.0
     # Original entry fee (for partial close pro-rating)
     entry_fee: float = 0.0
@@ -265,6 +304,35 @@ class Position:
 
     def __post_init__(self) -> None:
         assert self.entry_time.tzinfo is None, f"Position.entry_time must be UTC-naive, got tzinfo={self.entry_time.tzinfo}"
+
+    def next_tp_level(self) -> TpSlLevel | None:
+        """Return the first untriggered TP level, or None."""
+        for level in self.tp_levels:
+            if not level.triggered:
+                return level
+        return None
+
+    def next_sl_level(self) -> TpSlLevel | None:
+        """Return the first untriggered SL level, or None."""
+        for level in self.sl_levels:
+            if not level.triggered:
+                return level
+        return None
+
+    def has_multilevel_tp(self) -> bool:
+        """True if position has >1 TP level (split TP active)."""
+        return len(self.tp_levels) > 1
+
+    def sync_tp_sl_from_levels(self) -> None:
+        """Sync stop_loss/take_profit fields from current level state.
+
+        Call after marking a level as triggered to keep the single-value
+        fields in sync with the levels list.
+        """
+        tp_level = self.next_tp_level()
+        self.take_profit = tp_level.price if tp_level else None
+        sl_level = self.next_sl_level()
+        self.stop_loss = sl_level.price if sl_level else None
 
     def unrealized_pnl(self, mark_price: float) -> float:
         """Calculate unrealized PnL at given mark price."""
@@ -297,6 +365,9 @@ class Position:
             # Trigger sources
             "tp_trigger_by": self.tp_trigger_by.value,
             "sl_trigger_by": self.sl_trigger_by.value,
+            # Multi-level TP/SL (omitted when empty for backward compat)
+            **({"tp_levels": [l.to_dict() for l in self.tp_levels]} if self.tp_levels else {}),
+            **({"sl_levels": [l.to_dict() for l in self.sl_levels]} if self.sl_levels else {}),
         }
 
 

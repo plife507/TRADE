@@ -34,6 +34,8 @@ from .types import (
     OrderStatus,
     TimeInForce,
     TriggerDirection,
+    TriggerSource,
+    TpSlLevel,
     Position,
     Fill,
     FillReason,
@@ -265,7 +267,10 @@ class SimulatedExchange:
         timestamp: datetime | None = None,
         tp_order_type: str = "Market",
         sl_order_type: str = "Market",
+        tp_trigger_by: str = "LastPrice",
+        sl_trigger_by: str = "LastPrice",
         sl_tp_ref_price: float | None = None,
+        tp_levels_raw: list[tuple[float, float]] | None = None,
     ) -> OrderId | None:
         """Submit a market order to be filled on next bar."""
         self.entry_attempts_count += 1
@@ -304,12 +309,15 @@ class SimulatedExchange:
             submission_bar_index=self._current_bar_index,
             tp_order_type=tp_order_type,
             sl_order_type=sl_order_type,
+            tp_trigger_by=TriggerSource(tp_trigger_by),
+            sl_trigger_by=TriggerSource(sl_trigger_by),
+            tp_levels_raw=tp_levels_raw or [],
             sl_tp_ref_price=sl_tp_ref_price,
         )
 
         self._order_book.add_order(order)
         return order_id
-    
+
     def submit_limit_order(
         self,
         side: str,
@@ -322,10 +330,12 @@ class SimulatedExchange:
         timestamp: datetime | None = None,
         tp_order_type: str = "Market",
         sl_order_type: str = "Market",
+        tp_trigger_by: str = "LastPrice",
+        sl_trigger_by: str = "LastPrice",
     ) -> OrderId | None:
         """
         Submit a limit order.
-        
+
         Args:
             side: "long" or "short"
             size_usdt: Order size in USDT
@@ -335,7 +345,7 @@ class SimulatedExchange:
             time_in_force: GTC, IOC, FOK, or PostOnly
             reduce_only: If True, only reduces position
             timestamp: Order creation timestamp
-            
+
         Returns:
             Order ID if submitted, None if rejected
         """
@@ -377,11 +387,13 @@ class SimulatedExchange:
             submission_bar_index=self._current_bar_index,
             tp_order_type=tp_order_type,
             sl_order_type=sl_order_type,
+            tp_trigger_by=TriggerSource(tp_trigger_by),
+            sl_trigger_by=TriggerSource(sl_trigger_by),
         )
-        
+
         self._order_book.add_order(order)
         return order_id
-    
+
     def submit_stop_order(
         self,
         side: str,
@@ -628,24 +640,22 @@ class SimulatedExchange:
     ) -> tuple[list[Trade], list[Fill]]:
         """Check and execute TP/SL exits.
 
-        Passes PriceSnapshot through to trigger checks so TP/SL can
-        evaluate against mark/last/index prices per the position's
-        tp_trigger_by / sl_trigger_by settings.
+        Supports both single-level and multi-level TP/SL:
+        - Single-level: checks position.take_profit / stop_loss (existing behavior)
+        - Multi-level: iterates position.tp_levels, partial-closes per level
+
+        SL always triggers a full close. TP partial-closes when more levels remain.
         """
-        closed_trades = []
-        fills = []
+        closed_trades: list[Trade] = []
+        fills: list[Fill] = []
 
         if not self.position:
             return closed_trades, fills
 
-        exit_reason = None
-        exit_price = None
-        exit_price_source = None
-
-        # 1. Use 1m granular check if available
+        # Build 1m bars once (used by both single and multi-level checks)
+        bars_1m: list[tuple[float, float, float, float]] = []
         if quote_feed is not None and exec_1m_range is not None:
             start_1m, end_1m = exec_1m_range
-            bars_1m = []
             for i in range(start_1m, min(end_1m + 1, quote_feed.length)):
                 bars_1m.append((
                     float(quote_feed.open[i]),
@@ -654,23 +664,82 @@ class SimulatedExchange:
                     float(quote_feed.close[i]),
                 ))
 
-            if bars_1m:
-                position_side = "long" if self.position.side == OrderSide.LONG else "short"
-                result_1m = check_tp_sl_1m(
-                    position_side=position_side,
-                    entry_price=self.position.entry_price,
-                    take_profit=self.position.take_profit,
-                    stop_loss=self.position.stop_loss,
-                    bars_1m=bars_1m,
-                    tp_trigger_by=self.position.tp_trigger_by,
-                    sl_trigger_by=self.position.sl_trigger_by,
-                    prices=prices,
+        # --- Multi-level TP: check each untriggered level ---
+        if self.position.tp_levels:
+            # Check SL first (always full close, takes priority)
+            sl_hit = self._check_sl_hit(bar, bars_1m, prices)
+            if sl_hit:
+                result = self._close_position(
+                    self.position.stop_loss or bar.close, ts_open, "sl", "sl_level"
                 )
-                if result_1m:
-                    reason_str, _, price = result_1m
-                    exit_reason = FillReason.STOP_LOSS if reason_str == "stop_loss" else FillReason.TAKE_PROFIT
-                    exit_price = price
-                    exit_price_source = "tp_level" if exit_reason == FillReason.TAKE_PROFIT else "sl_level"
+                if result:
+                    closed_trades.append(result[0])
+                    fills.append(result[1])
+                return closed_trades, fills
+
+            # Check each untriggered TP level
+            for i, level in enumerate(self.position.tp_levels):
+                if level.triggered:
+                    continue
+                if not self.position:
+                    break  # Position fully closed by a prior level
+
+                tp_hit = self._check_tp_level_hit(level, bar, bars_1m, prices)
+                if not tp_hit:
+                    continue
+
+                # Mark level as triggered (frozen dataclass — replace in list)
+                self.position.tp_levels[i] = TpSlLevel(
+                    price=level.price, size_pct=level.size_pct,
+                    trigger_by=level.trigger_by, triggered=True,
+                )
+
+                # Count remaining untriggered levels
+                remaining = sum(1 for l in self.position.tp_levels if not l.triggered)
+
+                if remaining == 0:
+                    # Last level — full close
+                    result = self._close_position(level.price, ts_open, "tp", "tp_level")
+                    if result:
+                        closed_trades.append(result[0])
+                        fills.append(result[1])
+                else:
+                    # Partial close
+                    fill = self._partial_close_position(
+                        level.price, ts_open, "tp", level.size_pct,
+                    )
+                    if fill:
+                        fills.append(fill)
+
+                # Sync position.take_profit to next level
+                if self.position:
+                    self.position.sync_tp_sl_from_levels()
+
+            return closed_trades, fills
+
+        # --- Single-level TP/SL (existing behavior) ---
+        exit_reason = None
+        exit_price = None
+        exit_price_source = None
+
+        # 1. Use 1m granular check if available
+        if bars_1m:
+            position_side = "long" if self.position.side == OrderSide.LONG else "short"
+            result_1m = check_tp_sl_1m(
+                position_side=position_side,
+                entry_price=self.position.entry_price,
+                take_profit=self.position.take_profit,
+                stop_loss=self.position.stop_loss,
+                bars_1m=bars_1m,
+                tp_trigger_by=self.position.tp_trigger_by,
+                sl_trigger_by=self.position.sl_trigger_by,
+                prices=prices,
+            )
+            if result_1m:
+                reason_str, _, price = result_1m
+                exit_reason = FillReason.STOP_LOSS if reason_str == "stop_loss" else FillReason.TAKE_PROFIT
+                exit_price = price
+                exit_price_source = "tp_level" if exit_reason == FillReason.TAKE_PROFIT else "sl_level"
 
         # 2. Fallback to exec-bar OHLC check
         if exit_reason is None:
@@ -691,6 +760,84 @@ class SimulatedExchange:
                 fills.append(exit_fill)
 
         return closed_trades, fills
+
+    def _check_sl_hit(
+        self,
+        bar: Bar,
+        bars_1m: list[tuple[float, float, float, float]],
+        prices: "PriceSnapshot | None",
+    ) -> bool:
+        """Check if stop loss is hit (single-level, used by multi-level path)."""
+        pos = self.position
+        if pos is None or pos.stop_loss is None:
+            return False
+
+        is_long = pos.side == OrderSide.LONG
+        sl = pos.stop_loss
+
+        # Check via 1m bars if available
+        if bars_1m:
+            sl_trigger = pos.sl_trigger_by
+            if sl_trigger == TriggerSource.LAST_PRICE:
+                for _, bar_high, bar_low, _ in bars_1m:
+                    if is_long and bar_low <= sl:
+                        return True
+                    if not is_long and bar_high >= sl:
+                        return True
+            elif prices is not None:
+                check_price = prices.mark_price if sl_trigger == TriggerSource.MARK_PRICE else prices.index_price
+                if is_long and check_price <= sl:
+                    return True
+                if not is_long and check_price >= sl:
+                    return True
+            return False
+
+        # Exec-bar fallback
+        sl_high, sl_low = self._intrabar._resolve_trigger_range(bar, pos.sl_trigger_by, prices)
+        if is_long and sl_low <= sl:
+            return True
+        if not is_long and sl_high >= sl:
+            return True
+        return False
+
+    def _check_tp_level_hit(
+        self,
+        level: TpSlLevel,
+        bar: Bar,
+        bars_1m: list[tuple[float, float, float, float]],
+        prices: "PriceSnapshot | None",
+    ) -> bool:
+        """Check if a single TP level is hit."""
+        pos = self.position
+        if pos is None:
+            return False
+
+        is_long = pos.side == OrderSide.LONG
+        tp = level.price
+
+        # Check via 1m bars if available
+        if bars_1m:
+            if level.trigger_by == TriggerSource.LAST_PRICE:
+                for _, bar_high, bar_low, _ in bars_1m:
+                    if is_long and bar_high >= tp:
+                        return True
+                    if not is_long and bar_low <= tp:
+                        return True
+            elif prices is not None:
+                check_price = prices.mark_price if level.trigger_by == TriggerSource.MARK_PRICE else prices.index_price
+                if is_long and check_price >= tp:
+                    return True
+                if not is_long and check_price <= tp:
+                    return True
+            return False
+
+        # Exec-bar fallback
+        tp_high, tp_low = self._intrabar._resolve_trigger_range(bar, level.trigger_by, prices)
+        if is_long and tp_high >= tp:
+            return True
+        if not is_long and tp_low <= tp:
+            return True
+        return False
 
     def _track_mae_mfe(self, bar: Bar) -> None:
         """Track min/max price for MAE/MFE calculation."""
@@ -1032,6 +1179,22 @@ class SimulatedExchange:
             if tp is not None:
                 tp += price_shift
 
+        # Build multi-level TP from order (adjust prices for fill gap)
+        tp_levels: list[TpSlLevel] = []
+        if order.tp_levels_raw:
+            for level_price, level_size_pct in order.tp_levels_raw:
+                adjusted_price = level_price
+                if ref_price is not None and ref_price > 0:
+                    adjusted_price += fill.price - ref_price
+                tp_levels.append(TpSlLevel(
+                    price=adjusted_price,
+                    size_pct=level_size_pct,
+                    trigger_by=order.tp_trigger_by,
+                ))
+            # Set first-level price as Position.take_profit for backward compat
+            if tp_levels:
+                tp = tp_levels[0].price
+
         self.position = Position(
             position_id=f"pos_{self._position_counter:04d}",
             symbol=order.symbol,
@@ -1042,12 +1205,15 @@ class SimulatedExchange:
             size_usdt=actual_notional,
             stop_loss=sl,
             take_profit=tp,
+            tp_levels=tp_levels,
             fees_paid=fill.fee,
-            entry_fee=fill.fee,  # Track original entry fee for partial close pro-rating
+            entry_fee=fill.fee,
             entry_bar_index=self._current_bar_index,
             entry_ready=self._current_snapshot_ready,
             tp_order_type=order.tp_order_type,
             sl_order_type=order.sl_order_type,
+            tp_trigger_by=order.tp_trigger_by,
+            sl_trigger_by=order.sl_trigger_by,
         )
     
     def _handle_reduce_only_fill(self, fill: Fill, order: Order) -> None:
@@ -1321,6 +1487,40 @@ class SimulatedExchange:
             return trade
         return None
     
+    def modify_position_stops(
+        self,
+        stop_loss: float | None = None,
+        take_profit: float | None = None,
+        tp_levels: list[TpSlLevel] | None = None,
+    ) -> bool:
+        """Modify TP/SL on the open position.
+
+        Supports both single-level and multi-level modifications.
+        Pass tp_levels to replace the entire TP level plan.
+        Pass take_profit for single-level TP modification.
+
+        Args:
+            stop_loss: New SL price (None = no change, 0 = remove)
+            take_profit: New single-level TP price (None = no change, 0 = remove)
+            tp_levels: New multi-level TP plan (replaces existing levels)
+
+        Returns:
+            True if position was modified, False if no position.
+        """
+        if self.position is None:
+            return False
+
+        if stop_loss is not None:
+            self.position.stop_loss = stop_loss if stop_loss > 0 else None
+
+        if tp_levels is not None:
+            self.position.tp_levels = tp_levels
+            self.position.sync_tp_sl_from_levels()
+        elif take_profit is not None:
+            self.position.take_profit = take_profit if take_profit > 0 else None
+
+        return True
+
     def get_state(self):
         """Get current exchange state for debugging."""
         return {

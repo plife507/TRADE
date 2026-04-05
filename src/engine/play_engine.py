@@ -640,7 +640,10 @@ class PlayEngine:
             time_in_force=self.play.time_in_force,
             tp_order_type=self.play.tp_order_type,
             sl_order_type=self.play.sl_order_type,
-            metadata={"signal": signal, "bar_index": self._current_bar_index},
+            tp_trigger_by=self.play.tp_trigger_by,
+            sl_trigger_by=self.play.sl_trigger_by,
+            metadata={"signal": signal, "bar_index": self._current_bar_index,
+                      **({"tp_levels": signal.metadata.get("tp_levels")} if signal.metadata and signal.metadata.get("tp_levels") else {})},
         )
 
         # Submit to exchange
@@ -1710,6 +1713,8 @@ class PlayEngine:
             }
             if result.sl_tp_ref_price is not None:
                 metadata["sl_tp_ref_price"] = result.sl_tp_ref_price
+            if result.tp_levels:
+                metadata["tp_levels"] = result.tp_levels
             if result.resolved_metadata:
                 metadata.update(result.resolved_metadata)
             strategy = self.play.name or ""
@@ -1730,6 +1735,8 @@ class PlayEngine:
             }
             if result.sl_tp_ref_price is not None:
                 metadata["sl_tp_ref_price"] = result.sl_tp_ref_price
+            if result.tp_levels:
+                metadata["tp_levels"] = result.tp_levels
             if result.resolved_metadata:
                 metadata.update(result.resolved_metadata)
             strategy = self.play.name or ""

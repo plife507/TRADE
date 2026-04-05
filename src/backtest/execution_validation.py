@@ -954,6 +954,8 @@ class EvaluationResult:
     take_profit_price: float | None = None
     sl_tp_ref_price: float | None = None  # Reference price used for SL/TP computation
     size_usdt: float | None = None
+    # Multi-level TP: list of (price, size_pct) tuples
+    tp_levels: list[tuple[float, float]] = field(default_factory=list)
 
     # For exit signals (partial exits)
     exit_percent: float = 100.0  # Percentage of position to close (1-100)
@@ -1079,7 +1081,7 @@ class PlaySignalEvaluator:
             if action == "entry_long" and not has_position:
                 if not self.play.position_policy.allows_long():
                     continue
-                sl_price, tp_price, ref_price = self._compute_sl_tp(snapshot, "long")
+                sl_price, tp_price, ref_price, tp_lvls = self._compute_sl_tp(snapshot, "long")
                 resolved_meta = self._resolve_intent_metadata(intent, snapshot)
                 return (
                     EvaluationResult(
@@ -1089,13 +1091,14 @@ class PlaySignalEvaluator:
                         take_profit_price=tp_price,
                         sl_tp_ref_price=ref_price,
                         resolved_metadata=resolved_meta,
+                        tp_levels=tp_lvls,
                     ),
                     trace,
                 )
             elif action == "entry_short" and not has_position:
                 if not self.play.position_policy.allows_short():
                     continue
-                sl_price, tp_price, ref_price = self._compute_sl_tp(snapshot, "short")
+                sl_price, tp_price, ref_price, tp_lvls = self._compute_sl_tp(snapshot, "short")
                 resolved_meta = self._resolve_intent_metadata(intent, snapshot)
                 return (
                     EvaluationResult(
@@ -1105,6 +1108,7 @@ class PlaySignalEvaluator:
                         take_profit_price=tp_price,
                         sl_tp_ref_price=ref_price,
                         resolved_metadata=resolved_meta,
+                        tp_levels=tp_lvls,
                     ),
                     trace,
                 )
@@ -1205,7 +1209,7 @@ class PlaySignalEvaluator:
             if action == "entry_long" and not has_position:
                 if not self.play.position_policy.allows_long():
                     continue
-                sl_price, tp_price, ref_price = self._compute_sl_tp(snapshot, "long")
+                sl_price, tp_price, ref_price, tp_lvls = self._compute_sl_tp(snapshot, "long")
                 resolved_meta = self._resolve_intent_metadata(intent, snapshot)
                 return EvaluationResult(
                     decision=SignalDecision.ENTRY_LONG,
@@ -1214,12 +1218,13 @@ class PlaySignalEvaluator:
                     take_profit_price=tp_price,
                     sl_tp_ref_price=ref_price,
                     resolved_metadata=resolved_meta,
+                    tp_levels=tp_lvls,
                 )
 
             elif action == "entry_short" and not has_position:
                 if not self.play.position_policy.allows_short():
                     continue
-                sl_price, tp_price, ref_price = self._compute_sl_tp(snapshot, "short")
+                sl_price, tp_price, ref_price, tp_lvls = self._compute_sl_tp(snapshot, "short")
                 resolved_meta = self._resolve_intent_metadata(intent, snapshot)
                 return EvaluationResult(
                     decision=SignalDecision.ENTRY_SHORT,
@@ -1228,6 +1233,7 @@ class PlaySignalEvaluator:
                     take_profit_price=tp_price,
                     sl_tp_ref_price=ref_price,
                     resolved_metadata=resolved_meta,
+                    tp_levels=tp_lvls,
                 )
 
             # Exit signals (only when has matching position)
@@ -1299,7 +1305,7 @@ class PlaySignalEvaluator:
         self,
         snapshot: "SnapshotView",
         direction: str,
-    ) -> tuple[float | None, float | None, float | None]:
+    ) -> tuple[float | None, float | None, float | None, list[tuple[float, float]]]:
         """
         Compute stop loss and take profit prices from risk model.
 
@@ -1313,21 +1319,24 @@ class PlaySignalEvaluator:
         value is that reference price so the caller can adjust when the actual
         fill price differs (next bar's open for market orders).
 
+        The fourth return value is multi-level TP prices as (price, size_pct) tuples.
+        Empty when single-level TP is used.
+
         Args:
             snapshot: Runtime snapshot
             direction: "long" or "short"
 
         Returns:
-            Tuple of (stop_loss_price, take_profit_price, reference_price)
+            Tuple of (stop_loss_price, take_profit_price, reference_price, tp_levels)
         """
         risk_model = self.play.risk_model
         if risk_model is None:
-            return None, None, None
+            return None, None, None, []
 
         # Use close price as entry reference
         entry_price = self._get_snapshot_value(snapshot, "close", "exec")
         if entry_price is None:
-            return None, None, None
+            return None, None, None, []
 
         # Get leverage from account config (required for ROI-based SL/TP)
         leverage = 1.0
@@ -1398,7 +1407,57 @@ class PlaySignalEvaluator:
             else:
                 tp_price = entry_price - tp_distance
 
-        return sl_price, tp_price, entry_price
+        # Compute multi-level TP prices if configured
+        tp_level_prices = self._compute_tp_level_prices(snapshot, direction, sl_distance)
+
+        return sl_price, tp_price, entry_price, tp_level_prices
+
+    def _compute_tp_level_prices(
+        self,
+        snapshot: "SnapshotView",
+        direction: str,
+        sl_distance: float | None,
+    ) -> list[tuple[float, float]]:
+        """Compute prices for multi-level TP.
+
+        Returns list of (price, size_pct) tuples for each level.
+        Empty list if no multi-level TP is configured.
+        """
+        risk_model = self.play.risk_model
+        if risk_model is None or not risk_model.take_profit_levels:
+            return []
+
+        entry_price = self._get_snapshot_value(snapshot, "close", "exec")
+        if entry_price is None:
+            return []
+
+        leverage = 1.0
+        if self.play.account is not None:
+            leverage = max(1.0, self.play.account.max_leverage)
+
+        levels: list[tuple[float, float]] = []
+        for tp_level in risk_model.take_profit_levels:
+            rule = tp_level.rule
+            tp_price: float | None = None
+
+            if rule.type.value == "rr_ratio" and sl_distance is not None:
+                tp_distance = sl_distance * rule.value
+                tp_price = entry_price + tp_distance if direction == "long" else entry_price - tp_distance
+            elif rule.type.value == "atr_multiple" and rule.atr_feature_id:
+                atr = self._get_snapshot_value(snapshot, rule.atr_feature_id, "exec")
+                if atr is not None:
+                    tp_distance = atr * rule.value
+                    tp_price = entry_price + tp_distance if direction == "long" else entry_price - tp_distance
+            elif rule.type.value == "percent":
+                tp_distance = entry_price * (rule.value / 100.0) / leverage
+                tp_price = entry_price + tp_distance if direction == "long" else entry_price - tp_distance
+            elif rule.type.value == "fixed_points":
+                tp_price = entry_price + rule.value if direction == "long" else entry_price - rule.value
+
+            if tp_price is not None:
+                levels.append((tp_price, tp_level.size_pct))
+
+        return levels
 
     def check_warmup_satisfied(self, bar_counts: dict[str, int]) -> bool:
         """

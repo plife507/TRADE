@@ -143,34 +143,173 @@ Audit found 3 money-losing bugs, 6 safety gaps, 0 integration tests.
 
 ---
 
-## P1: Shadow Exchange Order Fidelity (SimExchange vs Bybit Parity)
+## P1: SimExchange Fidelity (SimExchange vs Bybit Parity)
 
-See `docs/SHADOW_ORDER_FIDELITY_REVIEW.md` for full analysis.
-14 features correct today. 4 HIGH gaps, 3 MEDIUM gaps identified.
+Sim fidelity is the foundation — every backtest and shadow run depends on it.
+Code investigation completed 2026-04-04. Items marked [x] already exist in code.
 
-### Phase 1: Price Fidelity (H1 + H2)
-- [ ] `PriceModel.set_external_prices(mark, last, index)` — shadow mode feeds real WS prices
-- [ ] Add `TriggerSource` enum (`LAST_PRICE`, `MARK_PRICE`, `INDEX_PRICE`) to `types.py`
-- [ ] Add `tp_trigger_by`, `sl_trigger_by` to `Position` and `Order` (default `LAST_PRICE`)
-- [ ] `check_tp_sl()` / `check_tp_sl_1m()` compare against configured price source
-- [ ] `OrderBook.check_triggers()` respects `trigger_by` on stop orders
-- [ ] Add `tp_trigger_by`, `sl_trigger_by` to Play DSL risk_model
-- [ ] **GATE**: `python trade_cli.py validate quick` passes
+### Phase 1: Trigger Source Wiring (DSL → Order → Position)
 
-### Phase 2: Exit Fidelity (H3 + H4)
-- [ ] New `TpSlLevel` dataclass: `price`, `size_pct`, `order_type`, `trigger_by`, `limit_price`, `triggered`
-- [ ] Replace single `Position.take_profit`/`stop_loss` with `list[TpSlLevel]` (backward compat via computed properties)
-- [ ] Wire `_check_tp_sl_exits()` to iterate levels, call `_partial_close_position()` for partials
-- [ ] Add `modify_position_stops()` public API to `SimulatedExchange`
-- [ ] DSL: split-TP syntax (`take_profit: [{level: 1.5, size_pct: 50}, ...]`)
-- [ ] **GATE**: `python trade_cli.py validate quick` passes
-- [ ] **GATE**: Existing 229 synthetic plays still pass
+The infrastructure exists (TriggerSource enum, fields on Order/Position, resolution
+logic in IntrabarPath/check_tp_sl_1m). What's missing is the **config→runtime pipe**.
 
-### Phase 3: Safety & Polish (M1 + M2 + M3)
-- [ ] `closeOnTrigger`: cancel competing orders to free margin when SL fires
-- [ ] Partial fills: `PARTIALLY_FILLED` status, `LiquidityModel` depth estimation, IOC/FOK differentiation
-- [ ] Trailing stop: absolute `activePrice` + fixed `trail_distance` alongside existing pct/ATR modes
-- [ ] **GATE**: `python trade_cli.py validate standard` passes
+**Already implemented:**
+- [x] `PriceModel.set_external_prices(mark, last, index)` — `pricing/price_model.py:63`
+- [x] `TriggerSource` enum (LAST_PRICE, MARK_PRICE, INDEX_PRICE) — `sim/types.py:88`
+- [x] `tp_trigger_by`, `sl_trigger_by` fields on `Order` — `sim/types.py:168-169`
+- [x] `tp_trigger_by`, `sl_trigger_by` fields on `Position` — `sim/types.py:263-264`
+- [x] `IntrabarPath.check_tp_sl()` respects trigger source — `pricing/intrabar_path.py:132`
+- [x] `check_tp_sl_1m()` respects trigger source — `pricing/intrabar_path.py:265`
+- [x] `OrderBook.check_triggers()` respects `trigger_by` — `sim/types.py:825`
+
+**To implement:**
+
+1. **Play DSL: parse `tp_trigger_by` / `sl_trigger_by` from risk section**
+   - File: `src/backtest/play/play.py` — `_parse_risk_from_section()` ~line 1034
+   - Add `tp_trigger_by` and `sl_trigger_by` string fields to `Play` dataclass (~line 433, beside `tp_order_type`)
+   - Parse from `risk:` / `risk_model:` YAML section (same pattern as `tp_order_type`)
+   - Validate values: must be `"LastPrice"`, `"MarkPrice"`, or `"IndexPrice"` (match `TriggerSource` enum)
+   - Default: `"LastPrice"` (Bybit default, preserves existing behavior)
+   - Serialize in `to_dict()` (~line 603, same pattern as `tp_order_type`)
+
+2. **Engine: thread trigger source from Play → Order**
+   - File: `src/engine/interfaces.py` — add `tp_trigger_by` and `sl_trigger_by` str fields to engine `Order` (~line 57)
+   - File: `src/engine/play_engine.py` — `execute_signal()` ~line 632: set `order.tp_trigger_by = self.play.tp_trigger_by`
+   - File: `src/engine/adapters/backtest.py` — `submit_order()` ~line 306: pass trigger source through to `SimulatedExchange.submit_order()`
+
+3. **SimExchange: accept and propagate trigger source**
+   - File: `src/backtest/sim/exchange.py` — `submit_order()` ~line 259: add `tp_trigger_by`/`sl_trigger_by` params, pass to `Order` constructor
+   - File: `src/backtest/sim/exchange.py` — `submit_limit_order()` ~line 313: same treatment
+   - File: `src/backtest/sim/exchange.py` — `_handle_entry_fill()` ~line 1035: copy `order.tp_trigger_by`/`sl_trigger_by` to Position (currently only copies `tp_order_type`/`sl_order_type`)
+
+- [x] Step 1: Play DSL — parse and validate `tp_trigger_by` / `sl_trigger_by`
+- [x] Step 2: Engine Order + PlayEngine — thread trigger source to order
+- [x] Step 3: BacktestExchangeAdapter — pass trigger source to SimExchange
+- [x] Step 4: SimExchange `submit_order`/`submit_limit_order` — accept trigger source params
+- [x] Step 5: `_handle_entry_fill` — copy trigger source from Order → Position
+- [x] **GATE**: `python3 trade_cli.py validate quick` passes
+- [x] **GATE**: `V_RISK_010_trigger_source_mark.yml` runs with MarkPrice, pipeline roundtrips verified
+
+### Phase 2: Split TP/SL (Multi-Level Exits)
+
+Currently TP/SL are single `float | None` on Position. Bybit supports up to 5 TP/SL
+levels with independent sizes. `_partial_close_position()` already works (exchange.py:1213).
+
+**Already implemented:**
+- [x] `_partial_close_position(exit_price, exit_time, reason, percent)` — `exchange.py:1213`
+- [x] Partial close pro-rates: entry_fee, funding_pnl, position size — `exchange.py:1290-1294`
+- [x] `OrderBook.amend_order()` can modify TP/SL on pending orders — `types.py:929`
+
+**To implement:**
+
+1. **`TpSlLevel` dataclass** in `sim/types.py`
+   - Fields: `price: float`, `size_pct: float` (1-100), `trigger_by: TriggerSource`, `triggered: bool = False`
+   - Sum of all level `size_pct` must equal 100
+   - Single-level backward compat: `[TpSlLevel(price=X, size_pct=100)]` is equivalent to current `float`
+
+2. **Replace Position.take_profit / stop_loss with level lists**
+   - `Position.tp_levels: list[TpSlLevel]` and `Position.sl_levels: list[TpSlLevel]`
+   - Add computed properties `Position.take_profit -> float | None` and `Position.stop_loss -> float | None` that return the first untriggered level's price (preserves all existing consumers)
+   - Update `Position.to_dict()` to serialize levels
+
+3. **RiskModel: multi-level take_profit**
+   - File: `src/backtest/play/risk_model.py` — extend `TakeProfitRule` or create `TakeProfitLevel` list
+   - Support both single value (current) and list of `{type, value, size_pct}` entries
+   - `RiskModel.from_dict()` handles both forms
+
+4. **DSL: split-TP YAML syntax**
+   - File: `src/backtest/play/play.py` — parse list form in risk_model section
+   - Single: `take_profit_pct: 3.0` (existing, unchanged)
+   - Multi: `take_profit: [{pct: 2.0, size_pct: 50}, {pct: 4.0, size_pct: 50}]`
+   - Validation: size_pct values must sum to 100
+
+5. **Signal generation: compute multi-level TP prices**
+   - File: `src/engine/execution_validation.py` — `_compute_sl_tp()` must produce a list of TP levels
+   - Pass levels through `signal.metadata["tp_levels"]`
+
+6. **Exchange: iterate TP levels in `_check_tp_sl_exits()`**
+   - File: `src/backtest/sim/exchange.py` — `_check_tp_sl_exits()` ~line 621
+   - Check each untriggered TP level; if hit, call `_partial_close_position(percent=level.size_pct)`
+   - Mark level as `triggered = True`
+   - Last level (or SL) does full `_close_position()`
+
+7. **`modify_position_stops()` public API**
+   - File: `src/backtest/sim/exchange.py` — new method
+   - Accepts new TP/SL levels for the open position
+   - Used by strategies that want to adjust stops mid-trade (beyond trailing/BE)
+
+- [x] Step 1: `TpSlLevel` dataclass in `sim/types.py`
+- [x] Step 2: Position — `tp_levels`/`sl_levels` lists + `next_tp_level()`, `sync_tp_sl_from_levels()`
+- [x] Step 3: RiskModel — `TakeProfitLevel` + `take_profit_levels` on RiskModel
+- [x] Step 4: Play DSL — parse `take_profit_levels: [{pct: X, size_pct: Y}, ...]`
+- [x] Step 5: Signal generation — `_compute_sl_tp()` returns tp_levels, `_compute_tp_level_prices()` added
+- [x] Step 6: `_handle_entry_fill` — builds TpSlLevel list from Order, adjusts for fill price gap
+- [x] Step 7: `_check_tp_sl_exits()` — iterates levels, partial close per level, SL priority
+- [x] Step 8: `modify_position_stops()` API on SimulatedExchange
+- [x] **GATE**: `python3 trade_cli.py validate quick` passes
+- [x] **GATE**: 229 synthetic plays — same results as before (pre-existing timeouts/bugs unchanged)
+- [x] **GATE**: `V_RISK_011_split_tp_3_level.yml` — 567 trades, 1612 TP partial/full closes (multi-level working)
+
+### Phase 3: Order Lifecycle Safety
+
+Three independent fixes. No dependencies between them.
+
+**Already implemented:**
+- [x] `OrderBook.cancel_all(symbol)` — `sim/types.py:805`
+- [x] `LiquidityModel` with `get_max_fillable()` — `execution/liquidity_model.py:46`
+- [x] `LiquidityModel.would_be_partial_fill()` — `execution/liquidity_model.py:82`
+- [x] Trailing stop: ATR + pct modes, activation threshold — `exchange.py:1351`
+- [x] Break-even stop: one-time activation with offset — `exchange.py:1433`
+- [x] IOC/FOK/PostOnly order semantics — `execution/execution_model.py:366-398`
+
+**To implement:**
+
+1. **closeOnTrigger: cancel competing orders on TP/SL fill**
+   - File: `src/backtest/sim/exchange.py` — `_close_position()` ~line 1209
+   - After `self.position = None` (line 1210), add `self._order_book.cancel_all(self.symbol)`
+   - This cancels ghost TP orders after SL fill (and vice versa)
+   - Same fix needed in `_partial_close_position()` — but only cancel if position fully closed
+   - Also cancel pending orders on liquidation (in `_check_liquidation()`)
+
+2. **Partial fills: fill-and-remainder instead of reject**
+   - File: `src/backtest/sim/execution/execution_model.py` — where liquidity check rejects
+   - Currently: if `fillable_usdt < order.size_usdt` → reject entire order
+   - New behavior: fill `fillable_usdt`, remainder stays in order book as new order
+   - Add `PARTIALLY_FILLED` to `OrderStatus` enum in `sim/types.py:47`
+   - LiquidityModel already computes `get_unfilled_amount()` — use it
+   - Wire `LiquidityConfig` from Play DSL or RiskProfileConfig (currently hardcoded disabled)
+
+3. **Trailing stop: fixed distance mode (Bybit `trail_distance`)**
+   - Currently: ATR-based (`atr_multiplier × ATR`) and percent-based (`trail_pct`)
+   - Missing: fixed absolute distance in price units (Bybit: `trailingStop` parameter)
+   - File: `src/backtest/play/risk_model.py` — add `trail_distance: float | None` to `TrailingConfig`
+   - File: `src/backtest/sim/exchange.py` — `update_trailing_stop()` ~line 1351: add fixed distance branch
+   - DSL: `trailing: {distance: 50.0, activation_pct: 1.0}` (50 USD fixed trail)
+
+- [ ] Step 1: `_close_position()` — cancel all pending orders after position close
+- [ ] Step 2: `_check_liquidation()` — cancel all pending orders after liquidation
+- [ ] Step 3: Add `PARTIALLY_FILLED` to `OrderStatus` enum
+- [ ] Step 4: Execution model — fill-and-remainder instead of reject when liquidity constrained
+- [ ] Step 5: Wire `LiquidityConfig` from DSL/RiskProfileConfig (enable via `liquidity: {mode: volume_fraction}`)
+- [ ] Step 6: `TrailingConfig` — add `trail_distance` field for fixed absolute trailing
+- [ ] Step 7: `update_trailing_stop()` — add fixed distance branch
+- [ ] Step 8: Play DSL — parse `trailing: {distance: X}` syntax
+- [ ] **GATE**: `python3 trade_cli.py validate quick` passes
+- [ ] **GATE**: `python3 trade_cli.py validate standard` passes
+
+### Phase 4: DSL + Validation Restructure
+
+After P1 Phases 1-3 are complete, restructure the DSL parser and validation system.
+290 validation plays (82% of all plays) — many from previous DSL versions.
+
+- [ ] Audit all 290 validation plays against current DSL spec — identify stale/broken
+- [ ] Delete plays that test removed DSL features or use deprecated syntax
+- [ ] Consolidate overlapping plays (88 indicator plays, 34 pattern plays)
+- [ ] Rewrite remaining plays to use current `risk_model:` / `risk:` syntax cleanly
+- [ ] Add new validation plays for Phase 1-3 features (trigger source, split TP, closeOnTrigger)
+- [ ] Update validation gate counts in CLAUDE.md and docs
+- [ ] **GATE**: `python3 trade_cli.py validate full` passes
+- [ ] **GATE**: Total play count reduced by ≥30% with same or better coverage
 
 ---
 

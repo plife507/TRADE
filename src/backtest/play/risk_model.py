@@ -227,6 +227,35 @@ class TakeProfitRule:
 
 
 @dataclass(frozen=True)
+class TakeProfitLevel:
+    """Single level in a multi-level take profit plan.
+
+    Each level specifies a TP rule and what percentage of the remaining
+    position to close when that level is reached.
+
+    Example (split TP at 2% and 4%):
+        [TakeProfitLevel(rule=TakeProfitRule(PERCENT, 2.0), size_pct=50),
+         TakeProfitLevel(rule=TakeProfitRule(PERCENT, 4.0), size_pct=100)]
+    """
+    rule: TakeProfitRule
+    size_pct: float = 100.0  # % of remaining position to close (1-100)
+
+    def __post_init__(self):
+        if self.size_pct <= 0 or self.size_pct > 100:
+            raise ValueError(f"size_pct must be in (0, 100], got: {self.size_pct}")
+
+    def to_dict(self) -> dict[str, Any]:
+        return {**self.rule.to_dict(), "size_pct": self.size_pct}
+
+    @classmethod
+    def from_dict(cls, d: dict[str, Any]) -> "TakeProfitLevel":
+        return cls(
+            rule=TakeProfitRule.from_dict(d),
+            size_pct=float(d.get("size_pct", 100.0)),
+        )
+
+
+@dataclass(frozen=True)
 class SizingRule:
     """Position sizing rule specification."""
     model: SizingModel
@@ -260,16 +289,26 @@ class SizingRule:
 
 @dataclass(frozen=True)
 class RiskModel:
-    """Complete risk model specification."""
+    """Complete risk model specification.
+
+    Single-level TP: use take_profit (TakeProfitRule).
+    Multi-level TP: use take_profit_levels (list[TakeProfitLevel]).
+    When take_profit_levels is non-empty, it takes precedence over take_profit.
+    """
     stop_loss: StopLossRule
     take_profit: TakeProfitRule
     sizing: SizingRule
     trailing_config: TrailingConfig | None = None
     break_even_config: BreakEvenConfig | None = None
+    take_profit_levels: tuple[TakeProfitLevel, ...] = ()
+
+    def has_multilevel_tp(self) -> bool:
+        """True if multi-level TP is configured."""
+        return len(self.take_profit_levels) > 1
 
     def to_dict(self) -> dict[str, Any]:
         """Convert to dict for serialization."""
-        result = {
+        result: dict[str, Any] = {
             "stop_loss": self.stop_loss.to_dict(),
             "take_profit": self.take_profit.to_dict(),
             "sizing": self.sizing.to_dict(),
@@ -278,6 +317,8 @@ class RiskModel:
             result["trailing"] = self.trailing_config.to_dict()
         if self.break_even_config:
             result["break_even"] = self.break_even_config.to_dict()
+        if self.take_profit_levels:
+            result["take_profit_levels"] = [l.to_dict() for l in self.take_profit_levels]
         return result
 
     @classmethod
@@ -291,10 +332,18 @@ class RiskModel:
         if d.get("break_even"):
             break_even = BreakEvenConfig.from_dict(d["break_even"])
 
+        # Parse multi-level TP if present
+        tp_levels: tuple[TakeProfitLevel, ...] = ()
+        if d.get("take_profit_levels"):
+            tp_levels = tuple(
+                TakeProfitLevel.from_dict(l) for l in d["take_profit_levels"]
+            )
+
         return cls(
             stop_loss=StopLossRule.from_dict(d["stop_loss"]),
             take_profit=TakeProfitRule.from_dict(d["take_profit"]),
             sizing=SizingRule.from_dict(d["sizing"]),
             trailing_config=trailing,
             break_even_config=break_even,
+            take_profit_levels=tp_levels,
         )

@@ -28,6 +28,7 @@ from .risk_model import (
     StopLossRule,
     StopLossType,
     TakeProfitRule,
+    TakeProfitLevel,
     TakeProfitType,
     SizingRule,
     SizingModel,
@@ -432,6 +433,8 @@ class Play:
     expire_after_bars: int = 0             # 0 = no expiry
     tp_order_type: str = "Market"          # "Market" | "Limit" (Bybit convention)
     sl_order_type: str = "Market"          # "Market" | "Limit"
+    tp_trigger_by: str = "LastPrice"       # "LastPrice" | "MarkPrice" | "IndexPrice" (Bybit: tpTriggerBy)
+    sl_trigger_by: str = "LastPrice"       # "LastPrice" | "MarkPrice" | "IndexPrice" (Bybit: slTriggerBy)
 
     # Cached feature registry
     _registry: FeatureRegistry | None = field(default=None, repr=False)
@@ -487,6 +490,12 @@ class Play:
             errors.append(f"tp_order_type must be one of {valid_tp_sl_types}, got: {self.tp_order_type!r}")
         if self.sl_order_type not in valid_tp_sl_types:
             errors.append(f"sl_order_type must be one of {valid_tp_sl_types}, got: {self.sl_order_type!r}")
+
+        valid_trigger_sources = {"LastPrice", "MarkPrice", "IndexPrice"}
+        if self.tp_trigger_by not in valid_trigger_sources:
+            errors.append(f"tp_trigger_by must be one of {valid_trigger_sources}, got: {self.tp_trigger_by!r}")
+        if self.sl_trigger_by not in valid_trigger_sources:
+            errors.append(f"sl_trigger_by must be one of {valid_trigger_sources}, got: {self.sl_trigger_by!r}")
 
         # Validate operator/type compatibility in actions
         # Only run if we have features and actions (otherwise skip - above errors cover it)
@@ -600,10 +609,12 @@ class Play:
                 "time_in_force": self.time_in_force,
                 "expire_after_bars": self.expire_after_bars,
             }
-        if self.tp_order_type != "Market" or self.sl_order_type != "Market":
+        if self.tp_order_type != "Market" or self.sl_order_type != "Market" or self.tp_trigger_by != "LastPrice" or self.sl_trigger_by != "LastPrice":
             risk = result.get("risk_model") or {}
             risk["tp_order_type"] = self.tp_order_type
             risk["sl_order_type"] = self.sl_order_type
+            risk["tp_trigger_by"] = self.tp_trigger_by
+            risk["sl_trigger_by"] = self.sl_trigger_by
             if "risk_model" not in result:
                 result["risk_model"] = risk
         return result
@@ -840,10 +851,31 @@ class Play:
                 value=float(stop_loss_pct),
             )
 
-        # Parse take_profit
+        # Parse take_profit (single or multi-level)
         take_profit_pct = risk_dict.get("take_profit_pct")
         take_profit_rule = None
-        if take_profit_pct is not None:
+        take_profit_levels: tuple[TakeProfitLevel, ...] = ()
+
+        tp_levels_raw = risk_dict.get("take_profit_levels")
+        if tp_levels_raw and isinstance(tp_levels_raw, list):
+            # Multi-level TP: [{pct: 2.0, size_pct: 50}, {pct: 4.0, size_pct: 100}]
+            levels = []
+            for entry in tp_levels_raw:
+                pct = float(entry.get("pct", entry.get("value", 0)))
+                size_pct = float(entry.get("size_pct", 100.0))
+                tp_type_str = entry.get("type", "percent")
+                levels.append(TakeProfitLevel(
+                    rule=TakeProfitRule(
+                        type=TakeProfitType(tp_type_str),
+                        value=pct,
+                        atr_feature_id=entry.get("atr_feature_id"),
+                    ),
+                    size_pct=size_pct,
+                ))
+            take_profit_levels = tuple(levels)
+            # Use first level as the single-value rule for backward compat
+            take_profit_rule = levels[0].rule if levels else None
+        elif take_profit_pct is not None:
             take_profit_rule = TakeProfitRule(
                 type=TakeProfitType.PERCENT,
                 value=float(take_profit_pct),
@@ -869,6 +901,7 @@ class Play:
                 ),
                 trailing_config=trailing_config,
                 break_even_config=break_even_config,
+                take_profit_levels=take_profit_levels,
             )
 
         return None
@@ -1033,6 +1066,8 @@ class Play:
         risk_section = d.get("risk", {})
         tp_order_type = str(risk_section.get("tp_order_type", "Market"))
         sl_order_type = str(risk_section.get("sl_order_type", "Market"))
+        tp_trigger_by = str(risk_section.get("tp_trigger_by", "LastPrice"))
+        sl_trigger_by = str(risk_section.get("sl_trigger_by", "LastPrice"))
 
         return cls(
             id=d.get("id") or d.get("name", ""),
@@ -1060,6 +1095,8 @@ class Play:
             expire_after_bars=expire_after_bars,
             tp_order_type=tp_order_type,
             sl_order_type=sl_order_type,
+            tp_trigger_by=tp_trigger_by,
+            sl_trigger_by=sl_trigger_by,
         )
 
 

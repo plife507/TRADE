@@ -69,6 +69,8 @@ class Order:
     time_in_force: str = "GTC"
     tp_order_type: str = "Market"
     sl_order_type: str = "Market"
+    tp_trigger_by: str = "LastPrice"
+    sl_trigger_by: str = "LastPrice"
     metadata: dict[str, Any] = field(default_factory=dict)
 
 

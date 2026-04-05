@@ -301,8 +301,10 @@ class BacktestExchange:
                 # Pass SL/TP reference price so the sim can adjust
                 # SL/TP levels when the fill price differs from signal close.
                 ref_price: float | None = None
+                tp_levels_raw: list[tuple[float, float]] | None = None
                 if order.metadata and isinstance(order.metadata, dict):
                     ref_price = order.metadata.get("sl_tp_ref_price")
+                    tp_levels_raw = order.metadata.get("tp_levels")
                 sim_order_id = self._sim_exchange.submit_order(
                     side=side,
                     size_usdt=order.size_usdt,
@@ -311,7 +313,10 @@ class BacktestExchange:
                     timestamp=self._get_order_timestamp(),
                     tp_order_type=order.tp_order_type,
                     sl_order_type=order.sl_order_type,
+                    tp_trigger_by=order.tp_trigger_by,
+                    sl_trigger_by=order.sl_trigger_by,
                     sl_tp_ref_price=ref_price,
+                    tp_levels_raw=tp_levels_raw,
                 )
             elif order.order_type.upper() == "LIMIT":
                 if order.limit_price is None:
@@ -329,6 +334,8 @@ class BacktestExchange:
                     time_in_force=order.time_in_force,
                     tp_order_type=order.tp_order_type,
                     sl_order_type=order.sl_order_type,
+                    tp_trigger_by=order.tp_trigger_by,
+                    sl_trigger_by=order.sl_trigger_by,
                 )
             elif order.order_type.upper() in ("STOP", "STOP_MARKET"):
                 if order.trigger_price is None:
