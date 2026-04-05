@@ -60,6 +60,10 @@ class TrailingConfig:
     # Percent-based trailing (distance = price × trail_pct / 100)
     trail_pct: float | None = None
 
+    # Fixed absolute distance in price units (Bybit: trailingStop parameter)
+    # e.g., trail_distance=50.0 means stop trails 50 USD behind peak
+    trail_distance: float | None = None
+
     # Activation threshold (start trailing after X% profit)
     # 0.0 = trail immediately from entry
     activation_pct: float = 0.0
@@ -70,6 +74,8 @@ class TrailingConfig:
             raise ValueError(f"atr_multiplier must be positive. Got: {self.atr_multiplier}")
         if self.trail_pct is not None and self.trail_pct <= 0:
             raise ValueError(f"trail_pct must be positive. Got: {self.trail_pct}")
+        if self.trail_distance is not None and self.trail_distance <= 0:
+            raise ValueError(f"trail_distance must be positive. Got: {self.trail_distance}")
         if self.activation_pct < 0:
             raise ValueError(f"activation_pct must be >= 0. Got: {self.activation_pct}")
 
@@ -83,6 +89,8 @@ class TrailingConfig:
             result["atr_feature_id"] = self.atr_feature_id
         if self.trail_pct is not None:
             result["trail_pct"] = self.trail_pct
+        if self.trail_distance is not None:
+            result["trail_distance"] = self.trail_distance
         return result
 
     @classmethod
@@ -92,6 +100,7 @@ class TrailingConfig:
             atr_multiplier=float(d.get("atr_multiplier", 2.0)),
             atr_feature_id=d.get("atr_feature_id"),
             trail_pct=float(d["trail_pct"]) if d.get("trail_pct") else None,
+            trail_distance=float(d["trail_distance"]) if d.get("trail_distance") else None,
             activation_pct=float(d.get("activation_pct", 0.0)),
         )
 

@@ -48,6 +48,7 @@ class OrderStatus(str, Enum):
     """Order status."""
     PENDING = "pending"
     FILLED = "filled"
+    PARTIALLY_FILLED = "partially_filled"
     CANCELLED = "cancelled"
     REJECTED = "rejected"
 

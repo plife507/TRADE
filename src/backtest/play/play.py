@@ -833,6 +833,7 @@ class Play:
                     atr_multiplier=float(stop_loss_dict.get("atr_multiplier", 2.0)),
                     atr_feature_id=stop_loss_dict.get("atr_feature_id"),
                     trail_pct=float(stop_loss_dict["trail_pct"]) if stop_loss_dict.get("trail_pct") else None,
+                    trail_distance=float(stop_loss_dict["trail_distance"]) if stop_loss_dict.get("trail_distance") else None,
                     activation_pct=float(stop_loss_dict.get("activation_pct", 0.0)),
                 )
                 sl_value = float(stop_loss_dict.get("atr_multiplier", stop_loss_dict.get("trail_pct", 2.0)))

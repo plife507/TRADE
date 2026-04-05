@@ -619,6 +619,7 @@ class SimulatedExchange:
                 current_price=mark_price,
                 atr_value=atr_value,
                 trail_pct=trailing_config.get("trail_pct"),
+                trail_distance=trailing_config.get("trail_distance"),
                 atr_multiplier=trailing_config.get("atr_multiplier", 2.0),
                 activation_pct=trailing_config.get("activation_pct", 0.0),
             )
@@ -1251,6 +1252,7 @@ class SimulatedExchange:
             # Full close - use apply_exit which clears margin state
             self._ledger.apply_exit(realized_pnl, fill.fee)
             self.position = None
+            self._order_book.cancel_all(self.symbol)  # closeOnTrigger
         else:
             # Partial close - use apply_partial_exit which keeps margin state
             # Margin will be recalculated on next update_for_mark_price call
@@ -1374,6 +1376,9 @@ class SimulatedExchange:
 
         self.trades.append(trade)
         self.position = None
+        # closeOnTrigger: cancel competing orders when position closes
+        # (Bybit behavior — TP fill cancels SL order and vice versa)
+        self._order_book.cancel_all(self.symbol)
         return trade, fill  # BUG-004 FIX: Return both for fills population
 
     def _partial_close_position(
@@ -1553,6 +1558,7 @@ class SimulatedExchange:
         current_price: float,
         atr_value: float | None = None,
         trail_pct: float | None = None,
+        trail_distance: float | None = None,
         atr_multiplier: float = 2.0,
         activation_pct: float = 0.0,
     ) -> float | None:
@@ -1608,7 +1614,13 @@ class SimulatedExchange:
                 new_stop = pos.peak_favorable_price + (atr_value * atr_multiplier)
         elif trail_pct is not None and trail_pct > 0:
             # Percent-based trailing
-            trail_distance = pos.peak_favorable_price * trail_pct / 100
+            pct_distance = pos.peak_favorable_price * trail_pct / 100
+            if is_long:
+                new_stop = pos.peak_favorable_price - pct_distance
+            else:
+                new_stop = pos.peak_favorable_price + pct_distance
+        elif trail_distance is not None and trail_distance > 0:
+            # Fixed absolute distance (Bybit: trailingStop parameter)
             if is_long:
                 new_stop = pos.peak_favorable_price - trail_distance
             else:

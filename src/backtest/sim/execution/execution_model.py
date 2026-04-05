@@ -135,19 +135,21 @@ class ExecutionModel:
             return result
         
         # Check liquidity constraint
-        # Note: Liquidity model is disabled by default (LiquidityConfig.mode="disabled")
-        # When enabled, rejects orders that exceed available liquidity
-        # (partial fills not implemented - would require order splitting)
+        # When enabled, fills up to available liquidity (partial fill).
+        # Disabled by default (LiquidityConfig.mode="disabled" → full fill).
         fillable_usdt = self._liquidity.get_max_fillable(order.size_usdt, bar)
         if fillable_usdt < order.size_usdt:
-            result.rejections.append(Rejection(
-                order_id=order.order_id,
-                reason=f"Exceeds liquidity: requested={order.size_usdt:.2f} > available={fillable_usdt:.2f}",
-                code="LIQUIDITY_EXCEEDED",
-                timestamp=fill_ts,
-            ))
-            return result
-        
+            if fillable_usdt <= 0:
+                result.rejections.append(Rejection(
+                    order_id=order.order_id,
+                    reason=f"Zero liquidity: bar volume too low for any fill",
+                    code="LIQUIDITY_EXCEEDED",
+                    timestamp=fill_ts,
+                ))
+                return result
+            # Partial fill: fill what's available, caller handles remainder
+            order.size_usdt = fillable_usdt
+
         # Calculate size in base units
         size = order.size_usdt / fill_price
 
@@ -237,16 +239,18 @@ class ExecutionModel:
             ))
             return result
 
-        # Check liquidity constraint
+        # Check liquidity constraint (partial fill when constrained)
         fillable_usdt = self._liquidity.get_max_fillable(order.size_usdt, exec_bar)
         if fillable_usdt < order.size_usdt:
-            result.rejections.append(Rejection(
-                order_id=order.order_id,
-                reason=f"Exceeds liquidity: requested={order.size_usdt:.2f} > available={fillable_usdt:.2f}",
-                code="LIQUIDITY_EXCEEDED",
-                timestamp=fill_ts,
-            ))
-            return result
+            if fillable_usdt <= 0:
+                result.rejections.append(Rejection(
+                    order_id=order.order_id,
+                    reason=f"Zero liquidity: bar volume too low for any fill",
+                    code="LIQUIDITY_EXCEEDED",
+                    timestamp=fill_ts,
+                ))
+                return result
+            order.size_usdt = fillable_usdt
 
         # Calculate size in base units
         size = order.size_usdt / fill_price

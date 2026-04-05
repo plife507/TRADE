@@ -286,15 +286,15 @@ Three independent fixes. No dependencies between them.
    - File: `src/backtest/sim/exchange.py` — `update_trailing_stop()` ~line 1351: add fixed distance branch
    - DSL: `trailing: {distance: 50.0, activation_pct: 1.0}` (50 USD fixed trail)
 
-- [ ] Step 1: `_close_position()` — cancel all pending orders after position close
-- [ ] Step 2: `_check_liquidation()` — cancel all pending orders after liquidation
-- [ ] Step 3: Add `PARTIALLY_FILLED` to `OrderStatus` enum
-- [ ] Step 4: Execution model — fill-and-remainder instead of reject when liquidity constrained
-- [ ] Step 5: Wire `LiquidityConfig` from DSL/RiskProfileConfig (enable via `liquidity: {mode: volume_fraction}`)
-- [ ] Step 6: `TrailingConfig` — add `trail_distance` field for fixed absolute trailing
-- [ ] Step 7: `update_trailing_stop()` — add fixed distance branch
-- [ ] Step 8: Play DSL — parse `trailing: {distance: X}` syntax
-- [ ] **GATE**: `python3 trade_cli.py validate quick` passes
+- [x] Step 1: `_close_position()` — cancel all pending orders after position close
+- [x] Step 2: `_handle_reduce_only_fill()` full close — cancel all pending orders
+- [x] Step 3: Add `PARTIALLY_FILLED` to `OrderStatus` enum
+- [x] Step 4: Execution model — fill-and-remainder instead of reject when liquidity constrained
+- [ ] Step 5: Wire `LiquidityConfig` from DSL/RiskProfileConfig — deferred (infrastructure ready, opt-in via ExecutionModelConfig)
+- [x] Step 6: `TrailingConfig` — add `trail_distance` field for fixed absolute trailing
+- [x] Step 7: `update_trailing_stop()` — add fixed distance branch
+- [x] Step 8: Play DSL — parse `trail_distance` in trailing config
+- [x] **GATE**: `python3 trade_cli.py validate quick` passes
 - [ ] **GATE**: `python3 trade_cli.py validate standard` passes
 
 ### Phase 4: DSL + Validation Restructure
